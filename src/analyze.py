@@ -12,7 +12,7 @@ Produces a cohort table: for each launch year, what share is still active.
 Every number printed must be traceable to a row in the source files. The
 analyzer refuses to print a cohort with fewer than MIN_N entries.
 """
-import json, os, sys, datetime, argparse
+import json, os, sys, datetime, argparse, math
 from collections import Counter, defaultdict
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -144,21 +144,197 @@ def cohort_table(products, min_n=MIN_N):
     return rows
 
 
+def vertical_table(products, min_n=MIN_N, tier=None):
+    """Group by industry vertical -> verdict distribution.
+
+    This is the reason the whole ledger exists: "which verticals die and
+    which survive". Same red line as the cohort table -- a vertical with
+    fewer than MIN_N verified rows is never published, because a rate
+    computed on 6 rows is noise dressed as a finding.
+
+    `verified` is the denominator: rows with no signal (unverified) and
+    rows whose state cannot be determined (unavailable / repo_blocked)
+    are excluded, for the same reason they are excluded from the cohort
+    rates.
+
+    `tier` selects one confidence tier. The default (None) mixes tiers,
+    which the project forbids (P17): a GitHub verdict and a domain verdict
+    are different kinds of evidence and must never share a denominator.
+    Callers pass "high" or "medium" explicitly.
+    """
+    by_cat = defaultdict(list)
+    for p in products:
+        if tier and p.get("confidence") != tier:
+            continue
+        cat = p.get("category")
+        if not cat:
+            continue
+        by_cat[cat].append(p)
+
+    rows = []
+    for cat in sorted(by_cat):
+        grp = by_cat[cat]
+        vc = Counter(p["verdict"] for p in grp)
+        n = len(grp)
+        dead = vc["dead"]
+        dormant = vc["dormant"]
+        alive = vc["active"]
+        slowing = vc["slowing"]
+        archived = vc["archived"]
+        unv = vc["unverified"]
+        alive_site = vc["alive"] + vc["blocked"]
+        degraded = vc["degraded"]
+        unavailable = vc["unavailable"] + vc["repo_blocked"]
+        verified = n - unv - unavailable
+        rows.append({
+            "category": cat,
+            "n": n,
+            "verified": verified,
+            "dead": dead, "dormant": dormant, "active": alive,
+            "slowing": slowing, "archived": archived,
+            "alive_site": alive_site, "degraded": degraded,
+            "unverified": unv, "unavailable": unavailable,
+            "dead_pct_verified": dead * 100 / verified if verified else 0,
+            "not_maintained_pct_verified":
+                (dead + dormant + slowing + archived) * 100 / verified
+                if verified else 0,
+            "active_pct_verified": alive * 100 / verified if verified else 0,
+            "publishable": verified >= min_n,
+        })
+    return rows
+
+
+def vertical_year_table(products, min_n=MIN_N, tier="high", year=None):
+    """Vertical x launch year -> verified death rate.
+
+    This is the clean version of the vertical comparison. Pooling launch
+    years into one rate is confounded: a product launched in 2024 has had
+    ~2.8 years of exposure to die, one launched in 2026 has had months.
+    Comparing verticals only within a single launch year removes that
+    confound.
+    """
+    rows = []
+    for p in products:
+        if tier and p.get("confidence") != tier:
+            continue
+        if not p.get("category") or not p.get("launch_day"):
+            continue
+        if year and p["launch_day"][:4] != year:
+            continue
+        rows.append(p)
+    by_cat = defaultdict(list)
+    for p in rows:
+        by_cat[p["category"]].append(p)
+
+    out = []
+    for cat in sorted(by_cat):
+        grp = by_cat[cat]
+        vc = Counter(p["verdict"] for p in grp)
+        n = len(grp)
+        unavailable = vc["unavailable"] + vc["repo_blocked"]
+        verified = n - vc["unverified"] - unavailable
+        dead = vc["dead"]
+        notmaint = dead + vc["dormant"] + vc["slowing"] + vc["archived"]
+        out.append({
+            "category": cat, "n": n, "verified": verified,
+            "dead": dead,
+            "dead_pct_verified": dead * 100 / verified if verified else 0,
+            "not_maintained_pct_verified":
+                notmaint * 100 / verified if verified else 0,
+            "publishable": verified >= min_n,
+        })
+    return out
+
+
+def vertical_significance(products, tier="high", year=None, min_n=MIN_N):
+    """Is a vertical's death rate actually different from the baseline?
+
+    A vertical with 3 dead out of 40 looks dramatic and may be noise.
+    This computes an exact one-sided binomial tail under the null that
+    the vertical dies at the same rate as its own cohort. Only verticals
+    where the rate is significantly higher than baseline are worth
+    calling out; everything else is ordinary variation.
+
+    Returns a list of dicts sorted by p-value.
+    """
+    rows = [p for p in products
+            if (not tier or p.get("confidence") == tier)
+            and p.get("category") and p.get("launch_day")
+            and (not year or p["launch_day"][:4] == year)]
+    if not rows:
+        return []
+
+    def verified_of(group):
+        vc = Counter(p["verdict"] for p in group)
+        n = len(group)
+        unavailable = vc["unavailable"] + vc["repo_blocked"]
+        return n - vc["unverified"] - unavailable, vc["dead"]
+
+    base_ver, base_dead = verified_of(rows)
+    if base_ver <= 0 or base_dead >= base_ver:
+        return []
+    base_p = base_dead / base_ver
+
+    by_cat = defaultdict(list)
+    for p in rows:
+        by_cat[p["category"]].append(p)
+
+    out = []
+    for cat, grp in by_cat.items():
+        ver, dead = verified_of(grp)
+        if ver < min_n or dead == 0:
+            continue
+        p_hat = dead / ver
+        # Exact one-sided binomial tail: P(X >= dead | n=ver, p=base_p)
+        tail = sum(math.comb(ver, i) * base_p ** i * (1 - base_p) ** (ver - i)
+                   for i in range(dead, ver + 1))
+        out.append({
+            "category": cat,
+            "verified": ver,
+            "dead": dead,
+            "rate": p_hat,
+            "baseline": base_p,
+            "ratio": p_hat / base_p if base_p else 0,
+            "p_value": tail,
+            "significant": tail < 0.05,
+        })
+    out.sort(key=lambda r: r["p_value"])
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ledger", default=os.path.join(HERE, "data", "ledger.jsonl"))
     ap.add_argument("--repo", default=os.path.join(HERE, "data", "repo_status.jsonl"))
     ap.add_argument("--domain", default=os.path.join(HERE, "data", "liveness.jsonl"))
+    ap.add_argument("--categories", default=os.path.join(HERE, "data", "categories.jsonl"))
     ap.add_argument("--out", default=os.path.join(HERE, "data", "products.json"))
     args = ap.parse_args()
 
     ledger = load(args.ledger)
     repo_status = load(args.repo)
     domain_status = load(args.domain)
+    categories = load(args.categories)
     print(f"ledger rows: {len(ledger)}  repo_status: {len(repo_status)}  "
-          f"domain_status: {len(domain_status)}")
+          f"domain_status: {len(domain_status)}  categories: {len(categories)}")
 
     products = build(ledger, repo_status, domain_status)
+
+    # Attach the vertical. A product may have several Show HN posts; the
+    # canonical title is the earliest launch, and the category follows
+    # that title. Every post of the same product gets a category, so the
+    # join is by post id -> product key.
+    cat_by_id = {c.get("id"): c for c in categories if c.get("id")}
+    cat_by_key = {}
+    for r in ledger:
+        key = r.get("repo") or r.get("base") or r.get("domain")
+        cid = cat_by_id.get(r.get("id"))
+        if key and cid and cid.get("category"):
+            # First post of the product wins (ledger is chronological).
+            cat_by_key.setdefault(key, cid["category"])
+    for p in products:
+        p["category"] = cat_by_key.get(p.get("key"))
+
     print(f"distinct products: {len(products)}")
     vc = Counter(p["verdict"] for p in products)
     print("verdicts:", dict(vc))
@@ -185,7 +361,45 @@ def main():
     else:
         print("   (no github-verified rows yet — run github_enrich.py first)")
 
-    json.dump({"products": products, "cohorts": rows},
+    # P17: the two confidence tiers are separate tables with separate
+    # denominators. A GitHub verdict and a domain verdict are different
+    # kinds of evidence; averaging them together hides both.
+    for tier, label in (("high", "HIGH confidence (GitHub-verified)"),
+                        ("medium", "MEDIUM confidence (domain-verified)")):
+        print(f"\n=== vertical table -- {label} ===")
+        vrows = vertical_table(products, tier=tier)
+        if not vrows:
+            print("   (no rows)")
+            continue
+        print(f"{'vertical':<24}{'n':>7}{'verif':>7}{'dead':>7}{'dorm':>7}"
+              f"{'alive':>7}{'arch':>7}{'dead%':>8}{'notmaint%':>11}  pub")
+        for r in sorted(vrows, key=lambda x: -x["n"]):
+            flag = "Y" if r["publishable"] else f"n(<{MIN_N})"
+            print(f"{r['category']:<24}{r['n']:>7}{r['verified']:>7}"
+                  f"{r['dead']:>7}{r['dormant']:>7}{r['active']:>7}"
+                  f"{r['archived']:>7}"
+                  f"{r['dead_pct_verified']:>7.1f}%"
+                  f"{r['not_maintained_pct_verified']:>10.1f}%  {flag}")
+        if tier == "high":
+            vrows_high = vrows
+        else:
+            vrows_medium = vrows
+
+    print("\n=== vertical significance vs cohort baseline (exact binomial) ===")
+    for yr in sorted({p["launch_day"][:4] for p in products
+                       if p.get("launch_day") and p.get("confidence") == "high"}):
+        sig = vertical_significance(products, tier="high", year=yr)
+        if not sig:
+            continue
+        print(f"\n  -- {yr} --")
+        for r in sig[:8]:
+            flag = "SIG" if r["significant"] else "   "
+            print(f"   {flag} {r['category']:24} {r['dead']:>4}/{r['verified']:<5} "
+                  f"rate={r['rate']*100:5.1f}%  baseline={r['baseline']*100:4.1f}%  "
+                  f"x{r['ratio']:4.1f}  p={r['p_value']:.5f}")
+
+    json.dump({"products": products, "cohorts": rows,
+               "verticals_high": vrows_high, "verticals_medium": vrows_medium},
               open(args.out, "w"), ensure_ascii=False, indent=1)
     print(f"\nwrote {args.out}")
 

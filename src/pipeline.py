@@ -146,8 +146,30 @@ def stage_verify():
     return 0
 
 
+def stage_classify():
+    """L3a: assign a deterministic industry label to every Show HN post.
+
+    Pure code, no LLM, reproducible. The classifier's quality is not
+    assumed: audit_categories.py measures it against hand labels, and the
+    report prints the measured numbers.
+    """
+    r = subprocess.run([sys.executable, os.path.join(HERE, "categorize.py")],
+                       capture_output=True, text=True, timeout=3600)
+    print(r.stdout[-1500:])
+    if r.returncode != 0:
+        print("classify: FAILED:", r.stderr[-1000:])
+        return 1
+    return 0
+
+
 def stage_report():
     """L3 + L4: analyze and render."""
+    # The category labels must exist before the analysis can cut by
+    # vertical. Re-running the classifier is cheap and idempotent, so the
+    # report stage never depends on someone remembering to run it.
+    rc = stage_classify()
+    if rc != 0:
+        return rc
     r = subprocess.run([sys.executable, os.path.join(HERE, "analyze.py")],
                        capture_output=True, text=True, timeout=1800)
     print(r.stdout[-2000:])
@@ -242,8 +264,8 @@ def stage_audit():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--stage", required=True,
-                    choices=["collect", "verify", "report", "audit", "push",
-                             "all", "status"])
+                    choices=["collect", "verify", "classify", "report", "audit",
+                             "push", "all", "status"])
     args = ap.parse_args()
 
     if args.stage == "status":
@@ -252,6 +274,7 @@ def main():
     stages = {
         "collect": ("collect", stage_collect),
         "verify": ("verify", stage_verify),
+        "classify": ("classify", stage_classify),
         "report": ("report", stage_report),
         "audit": ("audit", stage_audit),
         "push": ("push", stage_push),

@@ -334,5 +334,106 @@ class TestCohortDenominators(unittest.TestCase):
         self.assertEqual(row["dead_pct_verified"], 0)
 
 
+class TestVerticalAnalysis(unittest.TestCase):
+    """Vertical tables must respect the same denominator rules as cohorts
+    (P12) and must not promote noise into a finding."""
+
+    def _mk(self, cat, verdict, n, launch_day="2024-01-01"):
+        return [{"category": cat, "verdict": verdict,
+                 "launch_day": launch_day, "confidence": "high"}] * n
+
+    def test_vertical_table_excludes_unverified_and_unavailable(self):
+        from analyze import vertical_table
+        products = (self._mk("ai_ml", "dead", 5)
+                    + self._mk("ai_ml", "active", 45)
+                    + self._mk("ai_ml", "unverified", 100)
+                    + self._mk("ai_ml", "unavailable", 20))
+        rows = {r["category"]: r for r in vertical_table(products, tier="high")}
+        r = rows["ai_ml"]
+        self.assertEqual(r["verified"], 50)
+        self.assertEqual(r["dead"], 5)
+        self.assertEqual(r["dead_pct_verified"], 10.0)
+
+    def test_vertical_table_below_min_n_is_not_publishable(self):
+        from analyze import vertical_table
+        products = self._mk("tiny", "dead", 3)
+        rows = {r["category"]: r for r in vertical_table(products, tier="high")}
+        self.assertFalse(rows["tiny"]["publishable"])
+
+    def test_vertical_year_table_isolates_launch_year(self):
+        from analyze import vertical_year_table
+        products = (self._mk("ai_ml", "dead", 10, "2024-05-01")
+                    + self._mk("ai_ml", "dead", 40, "2025-05-01"))
+        rows = vertical_year_table(products, tier="high", year="2024")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["verified"], 10)
+        self.assertEqual(rows[0]["dead"], 10)
+
+    def test_significance_flags_a_real_difference(self):
+        from analyze import vertical_significance
+        # 40 of 50 dead in one vertical vs a 5% baseline elsewhere.
+        products = (self._mk("commerce", "dead", 40)
+                    + self._mk("commerce", "active", 10)
+                    + self._mk("ai_ml", "dead", 5)
+                    + self._mk("ai_ml", "active", 495))
+        sig = {r["category"]: r for r in
+               vertical_significance(products, tier="high")}
+        self.assertTrue(sig["commerce"]["significant"])
+        self.assertGreater(sig["commerce"]["ratio"], 5)
+        self.assertLess(sig["commerce"]["p_value"], 0.05)
+
+    def test_significance_does_not_flag_ordinary_variation(self):
+        from analyze import vertical_significance
+        # A vertical at the baseline rate must not be flagged.
+        products = (self._mk("ai_ml", "dead", 25)
+                    + self._mk("ai_ml", "active", 475)
+                    + self._mk("devtools", "dead", 25)
+                    + self._mk("devtools", "active", 475))
+        sig = {r["category"]: r for r in
+               vertical_significance(products, tier="high")}
+        for cat in ("ai_ml", "devtools"):
+            self.assertFalse(sig[cat]["significant"],
+                             f"{cat} must not be flagged as significant")
+
+    def test_significance_requires_min_n(self):
+        from analyze import vertical_significance
+        products = (self._mk("tiny", "dead", 3)
+                    + self._mk("other", "dead", 5)
+                    + self._mk("other", "active", 495))
+        sig = {r["category"]: r for r in
+               vertical_significance(products, tier="high")}
+        self.assertNotIn("tiny", sig)
+
+
+class TestCategorizerAudit(unittest.TestCase):
+    """The classifier's quality must be measured, never assumed."""
+
+    def test_categorize_is_deterministic(self):
+        import categorize
+        title = "Show HN: A fast payment gateway for indie SaaS"
+        a = categorize.categorize(title)
+        b = categorize.categorize(title)
+        self.assertEqual(a, b)
+        self.assertIn(a[0], categorize.KEYWORDS)
+
+    def test_generic_words_do_not_steal_a_vertical(self):
+        import categorize
+        # "app" / "tool" appear in almost every title and must not decide
+        # the category on their own.
+        for cat, title in [
+            ("ai_ml", "Show HN: An AI app for rewriting your tool docs"),
+            ("devtools", "Show HN: A terminal app for diffing git repos"),
+        ]:
+            r = categorize.categorize(title)
+            self.assertEqual(r[0], cat,
+                             f"{title!r} -> {r[0]}, want {cat}")
+
+    def test_categorize_never_invents_a_category(self):
+        import categorize
+        valid = set(categorize.CATEGORY_ORDER) | {"other"}
+        r = categorize.categorize("Show HN: Zqxjvwl")
+        self.assertIn(r[0], valid)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

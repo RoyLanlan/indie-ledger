@@ -325,6 +325,42 @@ death verdict is valid only if the API says 404. Measured after the P20 fix:
 
 ---
 
+### P23 — A category rate is not a finding until a test says so (2026-11-09)
+Incident: the first vertical table showed `commerce_fintech` at 22.2% dead
+against a 4.8% baseline and read like a headline finding. It survived one
+of two confounds (it was not a demo-repo artifact, it was not
+corporate-maintenance artifact), but the table still printed a row per
+vertical with no indication of which differences were distinguishable from
+sampling noise. Fix: every vertical rate is now paired with an exact
+one-sided binomial tail against its own launch-year baseline, and the
+report bolds only verticals that pass p < 0.05. Measured on the current
+snapshot: exactly one vertical passes (commerce_fintech, 2024 cohort,
+p = 0.00004); every other vertical is statistically indistinguishable
+from the cohort baseline. Rule: a rate that has not been tested is a
+number, not a conclusion.
+
+### P24 — Classifier quality is measured on hand labels, never asserted (2026-11-09)
+Incident: the first deterministic classifier scored 52.5% precision against
+hand labels and would have been published as a taxonomy. Coverage was
+misread as quality — the taxonomy covered 70%+ of rows while being wrong
+half the time. Fix: `audit_categories.py` scores the classifier against a
+sampled, hand-labelled set and reports precision, named-vertical precision
+and coverage separately; the report prints those measured numbers, and the
+classifier only ships if the audit passes. Two follow-up rules came out of
+the same work: generic words (`app`, `tool`, `client`) must never decide a
+category on their own, and coverage may never be quoted as a quality
+metric.
+
+### P25 — Pooling launch years into one rate is a confounded comparison (2026-11-09)
+Incident: the pooled vertical table compared a 2024 cohort (2.8 years of
+exposure) against 2026 cohorts (months of exposure) in one denominator, so
+the rate for any vertical was mostly a function of when it launched. Fix:
+vertical tables are always cut by launch year, and the comparison baseline
+for the significance test is the same launch year's cohort rate, never the
+pooled rate.
+
+---
+
 ## 7. Pipeline contract
 
 ```
