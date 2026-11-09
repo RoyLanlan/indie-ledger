@@ -199,6 +199,57 @@ class TestApiErrorSemantics(unittest.TestCase):
             fh.close()
 
 
+    def test_domain_scanner_takes_a_single_writer_lock(self):
+        """P18 applies to the domain scanner too."""
+        import fcntl
+        import tempfile
+        import os
+        import subprocess
+        import sys
+        here = os.path.dirname(os.path.abspath(__file__))
+        lock = os.path.join(tempfile.mkdtemp(), "d.lock")
+        fh = open(lock, "a+")
+        fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        try:
+            r = subprocess.run(
+                [sys.executable, os.path.join(here, "domain_scan.py"),
+                 "--lock", lock, "--batch", "1"],
+                capture_output=True, text=True, timeout=180)
+            out = (r.stdout or "") + (r.stderr or "")
+            self.assertIn("another scanner holds", out)
+        finally:
+            fcntl.flock(fh, fcntl.LOCK_UN)
+            fh.close()
+
+    def test_threaded_scan_agrees_with_serial(self):
+        """Concurrency must not change the verdict.
+
+        The threaded scanner is only a throughput optimisation; if it ever
+        disagrees with the serial path on the same domain, the collected data
+        is not comparable with what was gathered before.
+        """
+        import random
+        from concurrent.futures import ThreadPoolExecutor
+        from liveness import classify
+        candidates = ["example.com", "github.com", "nonexistent-zzz-qq.invalid"]
+        random.seed(1)
+        with ThreadPoolExecutor(max_workers=4) as ex:
+            par = list(ex.map(classify, candidates))
+        ser = [classify(d) for d in candidates]
+        self.assertEqual([p["verdict"] for p in par],
+                         [s["verdict"] for s in ser])
+        for p in par:
+            self.assertTrue(p.get("reason"), "every verdict needs evidence")
+
+    def test_domain_scanner_uses_workers_not_serial(self):
+        """The scanner must keep the concurrency implementation."""
+        import inspect
+        import domain_scan
+        src = inspect.getsource(domain_scan)
+        self.assertIn("ThreadPoolExecutor", src)
+        self.assertIn("--workers", src)
+
+
 class TestVerdictSemantics(unittest.TestCase):
     def test_none_is_dead(self):
         ev = classify_repo(None, "2024-01-01")

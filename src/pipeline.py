@@ -129,7 +129,10 @@ def stage_verify():
         ran.append("github (no PAT)")
 
     # L2b -- no auth needed
-    cmd = [sys.executable, os.path.join(HERE, "domain_scan.py"), "--delay", "1.0"]
+    cmd = [sys.executable, os.path.join(HERE, "domain_scan.py"),
+           "--workers", "16", "--delay", "0.05",
+           # Single-writer lock (P18), same discipline as the GitHub sampler.
+           "--lock", os.path.join(LOCKS, "domain_scan.lock")]
     print("verify: starting domain scan (bounded to 1 pass)")
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=5400)

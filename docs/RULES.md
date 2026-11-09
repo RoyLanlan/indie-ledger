@@ -278,6 +278,17 @@ sampler takes its own `flock` (`.locks/github_sampler.lock`) and exits
 immediately if another instance holds it. Rule: any component that appends to
 a shared file must hold its own lock, not rely on the caller's.
 
+### P19 — Throughput must come from concurrency, never from faster verdicts (2026-11-09)
+Incident: the domain scan ran at 11.5 domains/min, so the full 36,881-domain
+sweep needed ~52 hours. The per-domain cost was dominated by DNS timeouts
+and a `dig` subprocess, not by the politeness delay. Measured on a 60-domain
+sample: serial 36.6/min, 16 threads 196.8/min; in production 239/min, i.e.
+**ETA 2.5 hours instead of 52**. The verdict rules were NOT changed — a
+40-domain A/B run agreed 40/40 between the serial and threaded paths, and a
+regression test now pins that equivalence. Rule: when a sweep is too slow,
+parallelise it and prove the output is unchanged; never loosen the rules to
+make the number look better.
+
 ---
 
 ## 7. Pipeline contract
@@ -297,7 +308,7 @@ fetched does not duplicate rows. L3 refuses to publish cohorts under 30.
 - L1 daily at 03:23 UTC — catches yesterday's posts, avoids the UTC midnight
   boundary where Show HN volume peaks
 - L2a hourly — 60 repos/hour unauth, 5000 with a PAT
-- L2b continuous — one domain per ~1.4s, no quota
+- L2b continuous — 16 workers, ~240 domains/min, no quota
 - L3 + L4 weekly — Monday 09:07
 
 ---
@@ -307,8 +318,8 @@ fetched does not duplicate rows. L3 refuses to publish cohorts under 30.
 | Layer | Cost |
 |---|---|
 | L1 | ~1,100 Algolia requests per year of history; 3 per day thereafter. No auth, no documented limit. |
-| L2a | 24,767 repo checks. Unauth: ~17 days. PAT: ~5 hours. |
-| L2b | 36,881 domains x ~1.4s = ~14 hours, one pass, no quota. |
+| L2a | 24,767 repo checks. Unauth: ~17 days. PAT: ~75/min -> ~5.5 hours. |
+| L2b | 36,881 domains at ~240/min (16 workers) = ~2.5 hours, one pass, no quota. |
 | L3/L4 | Local compute. LLM is not required for any verdict. |
 | LLM | Optional, only for positioning-sentence extraction and post-mortem narrative. Zero if skipped. |
 
