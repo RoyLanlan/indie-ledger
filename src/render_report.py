@@ -345,10 +345,12 @@ def render(products, cohorts, meta):
     # --- the one finding that survives a statistical test ---
     allsig = []
     for y, sigrows in sorted(meta.get("vertical_sig", {}).items()):
+        n_tested = len(sigrows)
         for sg in sigrows:
-            if sg["significant"]:
+            if sg["significant"] or sg.get("significant_uncorrected"):
                 s2 = dict(sg)
                 s2["year"] = y
+                s2["tested_count"] = n_tested
                 allsig.append(s2)
     if allsig:
         A("**表 5.3　统计显著性检验（精确二项分布，单侧）**")
@@ -356,21 +358,38 @@ def render(products, cohorts, meta):
         A("上表里有些赛道的已死占比看着刺眼，但样本小的时候"
           "波动很大。这里对每个赛道做一次检验："
           "原假设是「该赛道的死亡率与同年整体一致」，"
-          "计算 P(观测死亡数 ≥ 实际死亡数)，只有 p < 0.05 才算真的不一样。")
+          "计算 P(观测死亡数 ≥ 实际死亡数)。")
         A("")
-        A("| 年份 | 赛道 | 已死/已核验 | 该赛道 | 同年整体 | 倍数 | p 值 |")
-        A("|---|---|---|---|---|---|---|")
+        A("**每个年份要同时检验十来个赛道，所以裸的 p < 0.05 不够**——"
+          "检验这么多次，光靠运气也会冒出一个「显著」。"
+          "因此这里额外做 **Holm-Bonferroni 多重比较校正**："
+          "按 p 值从小到大排序，第 i 名的判定阈值是 0.05/(总数−i)，"
+          "而且排在前面的假设必须全部通过，后面的才算通过。"
+          "只有通过校正的赛道才会被写成结论。")
+        A("")
+        A("| 年份 | 赛道 | 已死/已核验 | 该赛道 | 同年整体 | 倍数 | p 值 | 校正后 p | 判定 |")
+        A("|---|---|---|---|---|---|---|---|---|")
         for sg in allsig:
+            verdict = "显著" if sg["significant"] else "未通过校正"
             A(f"| {sg['year']} | {VERTICAL_CN.get(sg['category'], sg['category'])} | "
               f"{sg['dead']}/{sg['verified']} | {sg['rate']*100:.1f}% | "
               f"{sg['baseline']*100:.1f}% | {sg['ratio']:.1f}× | "
-              f"{sg['p_value']:.5f} |")
+              f"{sg['p_value']:.5f} | {sg.get('p_holm', 1.0):.5f} | {verdict} |")
         A("")
         for sg in allsig:
-            A(f"**{sg['year']} 年「{VERTICAL_CN.get(sg['category'], sg['category'])}」"
-              f"是唯一显著高于同年平均的赛道**："
-              f"{sg['dead']}/{sg['verified']} 个已死（{sg['rate']*100:.1f}%），"
-              f"是同年整体（{sg['baseline']*100:.1f}%）的 {sg['ratio']:.1f} 倍。")
+            name = VERTICAL_CN.get(sg["category"], sg["category"])
+            if sg["significant"]:
+                A(f"**{sg['year']} 年「{name}」通过多重比较校正，"
+                  f"是唯一显著高于同年平均的赛道**："
+                  f"{sg['dead']}/{sg['verified']} 个已死（{sg['rate']*100:.1f}%），"
+                  f"是同年整体（{sg['baseline']*100:.1f}%）的 {sg['ratio']:.1f} 倍"
+                  f"（校正后 p = {sg.get('p_holm', 1.0):.5f}）。")
+            else:
+                A(f"**{sg['year']} 年「{name}」未通过多重比较校正**："
+                  f"裸 p = {sg['p_value']:.5f} 虽然小于 0.05，"
+                  f"但同年共检验了 {sg.get('tested_count', '多个')} 个赛道，"
+                  f"校正后 p = {sg.get('p_holm', 1.0):.5f}，"
+                  f"因此**不能**写成结论，只能记为「待观察」。")
             A("")
         A("其余赛道（AI、开发者工具、DevOps 等）在这个检验下"
           "**与整体没有可区分的差异**——它们看起来的差异是样本波动，"

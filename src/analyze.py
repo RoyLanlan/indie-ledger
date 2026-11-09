@@ -287,6 +287,13 @@ def vertical_significance(products, tier="high", year=None, min_n=MIN_N):
     where the rate is significantly higher than baseline are worth
     calling out; everything else is ordinary variation.
 
+    P32: fifteen verticals are tested per year, so a bare p<0.05 is not
+    enough - with that many tests, one "significant" result is what
+    chance alone produces. The Holm-Bonferroni correction is applied
+    across the set of verticals tested in the same cohort, and both the
+    raw and the corrected p-value are reported. A vertical is called
+    significant only if it survives the correction.
+
     Returns a list of dicts sorted by p-value.
     """
     rows = [p for p in products
@@ -331,9 +338,27 @@ def vertical_significance(products, tier="high", year=None, min_n=MIN_N):
             "baseline": base_p,
             "ratio": p_hat / base_p if base_p else 0,
             "p_value": tail,
-            "significant": tail < 0.05,
+            "significant": False,      # set below, after Holm-Bonferroni
+            "p_holm": 1.0,
+            "significant_uncorrected": tail < 0.05,
         })
+
+    # Holm-Bonferroni across the verticals tested in this cohort.
+    # Order by p-value ascending; the i-th (0-based) hypothesis gets
+    # threshold alpha/(m-i). A vertical is called significant only if it
+    # clears the threshold for its rank AND every hypothesis ranked above
+    # it also cleared theirs.
+    m = len(out)
     out.sort(key=lambda r: r["p_value"])
+    still_significant = True
+    for i, r in enumerate(out):
+        threshold = 0.05 / (m - i) if m - i > 0 else 0.05
+        r["holm_threshold"] = threshold
+        r["p_holm"] = min(1.0, r["p_value"] * (m - i))
+        if still_significant and r["p_value"] <= threshold:
+            r["significant"] = True
+        else:
+            still_significant = False
     return out
 
 

@@ -496,6 +496,86 @@ class TestAuditGuards(unittest.TestCase):
         self.assertIn("conclusive}", src[idx:idx + 300])
 
 
+class TestMultipleComparisons(unittest.TestCase):
+    """P32: with ~15 verticals tested per year, a bare p<0.05 is not a result.
+
+    The audit caught 2025 education_learning at p=0.0486 - under the
+    threshold, and about to be published as a second finding. Under
+    Holm-Bonferroni across the 15 verticals in that cohort it becomes
+    p=0.729, i.e. ordinary variation.
+    """
+
+    def _sig(self, products, year=None):
+        import sys, os
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from analyze import vertical_significance
+        return vertical_significance(products, tier="high", year=year)
+
+    def _mk(self, cat, n, dead, day="2024-01-01"):
+        out = []
+        for i in range(n):
+            out.append({
+                "category": cat, "confidence": "high", "launch_day": day,
+                "verdict": "dead" if i < dead else "active",
+            })
+        return out
+
+    def test_uncorrected_significant_but_corrected_not_is_not_a_finding(self):
+        # 6 dead out of 45: raw p = 0.034 (< 0.05), but with 15 verticals
+        # tested the Holm threshold is 0.05/15 = 0.0033, so it fails.
+        products = self._mk("target", 45, 6, "2025-01-01")
+        for k in range(14):
+            products += self._mk(f"other{k}", 60, 3, "2025-01-01")
+        rows = self._sig(products, year="2025")
+        target = [r for r in rows if r["category"] == "target"]
+        self.assertTrue(target, "target vertical should be in the result set")
+        t = target[0]
+        self.assertLess(t["p_value"], 0.05,
+                        "raw p-value should be under 0.05 for this fixture")
+        self.assertFalse(t["significant"],
+                         "must NOT be significant after Holm-Bonferroni")
+        self.assertTrue(t["significant_uncorrected"])
+        self.assertGreater(t["p_holm"], 0.05)
+
+    def test_a_strong_result_survives_the_correction(self):
+        # 10 dead out of 40: raw p = 0.00009, clears the 0.0033 threshold
+        # that the first-ranked hypothesis must meet with 15 tests.
+        products = self._mk("target", 40, 10, "2024-01-01")
+        for k in range(14):
+            products += self._mk(f"other{k}", 60, 3, "2024-01-01")
+        rows = self._sig(products, year="2024")
+        t = [r for r in rows if r["category"] == "target"][0]
+        self.assertTrue(t["significant"],
+                        "a p=0.0001 result must survive the correction")
+        self.assertLess(t["p_holm"], 0.05)
+
+    def test_holm_threshold_for_the_first_ranked_hypothesis(self):
+        # With 15 hypotheses the first one must clear 0.05/15.
+        products = self._mk("target", 40, 10, "2024-01-01")
+        for k in range(14):
+            products += self._mk(f"other{k}", 60, 3, "2024-01-01")
+        rows = self._sig(products, year="2024")
+        t = [r for r in rows if r["category"] == "target"][0]
+        self.assertAlmostEqual(t["holm_threshold"], 0.05 / 15, places=9)
+
+    def test_more_tests_inflate_the_corrected_p_value(self):
+        # Same target, more competing hypotheses -> larger corrected p.
+        products_many = self._mk("target", 45, 6, "2025-01-01")
+        for k in range(14):
+            products_many += self._mk(f"other{k}", 60, 3, "2025-01-01")
+        many = [r for r in self._sig(products_many, year="2025")
+                if r["category"] == "target"][0]
+
+        products_few = self._mk("target", 45, 6, "2025-01-01")
+        for k in range(3):
+            products_few += self._mk(f"other{k}", 60, 3, "2025-01-01")
+        few = [r for r in self._sig(products_few, year="2025")
+               if r["category"] == "target"][0]
+
+        self.assertGreater(many["p_holm"], few["p_holm"],
+                           "more tests must inflate the corrected p-value")
+
+
 class TestBinomialTail(unittest.TestCase):
     """The exact binomial tail must survive large n.
 

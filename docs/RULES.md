@@ -457,6 +457,31 @@ not merely that it exists and looks plausible. A crash that leaves
 stale output in place is worse than a crash that leaves nothing, because
 it converts a visible failure into an invisible one.
 
+### P32 — Test many hypotheses and correct for it (2026-11-09)
+Fifteen verticals are tested per year. Under a bare `p < 0.05`, testing
+that many hypotheses produces roughly one "significant" result by chance
+alone. The audit caught this in the act: 2025 `education_learning` came
+out at `p = 0.0486`, which is under 0.05, and the report was about to
+publish it as a second finding alongside the 2024 commerce result.
+
+It does not survive correction. With Holm-Bonferroni across the 15
+verticals tested in that cohort, `p = 0.0486` becomes `p = 0.729` -
+i.e. entirely ordinary. The 2024 `commerce_fintech` result survives:
+`p = 0.0027` raw, `p = 0.0377` corrected, still significant.
+
+Fix: `analyze.py` now computes the Holm-Bonferroni step-up correction
+across the set of verticals tested in the same cohort - order by
+p-value, the i-th hypothesis gets threshold `0.05/(m-i)`, and a
+hypothesis only counts if every one ranked above it also cleared its
+threshold. Both the raw and the corrected p-value are reported, and the
+report table has a `判定` column. A vertical that passes the raw test
+but fails the correction is written up as **待观察** ("worth watching"),
+never as a finding.
+
+Rule: a p-value means nothing without knowing how many hypotheses were
+tested. If the number of tests is not stated alongside the p-value, the
+p-value is not a result - it is a coincidence waiting to be published.
+
 ---
 
 ## 7. Pipeline contract
