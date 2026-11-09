@@ -531,6 +531,67 @@ class TestCoverageSentence(unittest.TestCase):
         self.assertEqual(self._sent([]), "")
 
 
+class TestCompletenessSentences(unittest.TestCase):
+    """Completeness claims must be computed, and must count the right
+    unit.
+
+    Two defects, both the same species (P33/P35):
+
+    1. The domain note hardcoded "38,617 domains scanned" while the
+       number it actually computed from cohort rows was 36,877 - a
+       PRODUCT count. Domains and products are different units: one
+       domain can host several Show HN posts. The sentence claimed to
+       describe domain coverage while measuring products.
+
+    2. A second hardcoded clause - "unlike the GitHub layer which is
+       still being sampled" - became false the moment the GitHub
+       sampler finished.
+    """
+
+    def _render(self):
+        import sys, os
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from render_report import (_coverage_sentence,
+                                   _domain_completeness_sentence,
+                                   _high_completeness_sentence)
+        return (_coverage_sentence, _domain_completeness_sentence,
+                _high_completeness_sentence)
+
+    def test_high_tier_final_at_full_coverage(self):
+        _, _, high = self._render()
+        s = high({"gh_repos_total": 24767, "gh_repos_checked": 24767})
+        self.assertIn("全量核验", s)
+        self.assertIn("终值", s)
+
+    def test_high_tier_is_snapshot_when_partial(self):
+        _, _, high = self._render()
+        s = high({"gh_repos_total": 24767, "gh_repos_checked": 13000})
+        self.assertIn("中间快照", s)
+        self.assertNotIn("终值", s)
+
+    def test_domain_sentence_counts_domains_not_products(self):
+        _, dom, _ = self._render()
+        s = dom({"dom_total": 38617, "dom_checked": 38617,
+                 "cohorts_medium": [{"n": 36877, "unverified": 0}]})
+        self.assertIn("38,617 个域名", s)
+        # the product count appears only as the explicitly-labelled
+        # product total, never as the domain total
+        self.assertIn("36,877 个产品", s)
+
+    def test_domain_sentence_reports_partial_coverage(self):
+        _, dom, _ = self._render()
+        s = dom({"dom_total": 38617, "dom_checked": 20000,
+                 "cohorts_medium": [{"n": 36877, "unverified": 16877}]})
+        self.assertIn("尚未全部完成", s)
+        self.assertNotIn("全量核验完成", s)
+
+    def test_no_claim_without_data(self):
+        cov, dom, high = self._render()
+        self.assertEqual(dom({}), "")
+        self.assertEqual(high({}), "")
+        self.assertEqual(cov({}), "")
+
+
 class TestMultipleComparisons(unittest.TestCase):
     """P32: with ~15 verticals tested per year, a bare p<0.05 is not a result.
 

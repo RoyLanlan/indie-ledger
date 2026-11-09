@@ -496,6 +496,29 @@ document that regenerates on a schedule, any statement about the
 *current* state must be derived at render time. A hardcoded status line
 is a lie waiting for the data to move.
 
+### P35 — Count the unit you are describing (2026-11-09)
+The domain-completeness note said "38,617 个域名全部扫描完毕" but the
+number it computed was 36,877 — the **product** count, not the domain
+count. One domain can host several Show HN posts, so the two are
+different units and the sentence described domain coverage while
+measuring products.
+
+The GitHub tier had the mirror-image bug: its completeness was derived
+from cohort rows (products), while the thing actually being verified is
+**repos** — 24,767 distinct repos, against 27,958 products that
+reference one.
+
+Rule: before writing "X of Y are verified", check that X and Y count
+the same kind of thing. Domains vs products vs repos are three
+different populations and their counts are not interchangeable. Both
+completeness sentences now read their totals directly from the ledger
+and the verdict files.
+
+A second clause in the same note — "unlike the GitHub layer which is
+still being sampled" — was hardcoded and became false the moment the
+sampler finished. Same defect as P33, and the reason P33 exists: state
+about the pipeline's current condition are computed at render time.
+
 ---
 
 ## 7. Pipeline contract

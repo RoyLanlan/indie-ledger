@@ -53,6 +53,64 @@ def fmt_pct1(n, d):
     return f"{n*100/d:.1f}%" if d else "n/a"
 
 
+def _high_completeness_sentence(meta):
+    """State the GitHub tier's coverage explicitly.
+
+    Once every repo is sampled, the report may present cohort survival
+    rates as final. Until then it must say so out loud, because the
+    tables look equally finished either way.
+    """
+    total = meta.get("gh_repos_total") or 0
+    checked = meta.get("gh_repos_checked") or 0
+    if not total:
+        return ""
+    pct = checked / total * 100
+    if pct >= 99.9:
+        return (f"> GitHub 高置信层已全量核验：{total:,} 个仓库全部核验完毕"
+                f"（{checked:,}/{total:,}），下表为终值。")
+    return (f"> GitHub 高置信层核验率 {pct:.1f}%"
+            f"（{checked:,}/{total:,}，尚有 {total - checked:,} 个未核验），"
+            f"下表为中间快照。")
+
+
+def _domain_completeness_sentence(meta):
+    """Describe the domain tier's completeness from the data.
+
+    The domain note used to claim the domain tier was final "unlike the
+    GitHub layer which is still being sampled" - and that clause became
+    false the moment the GitHub sampler finished. Same defect as P33: a
+    hardcoded claim about the current state of another part of the
+    pipeline. Now both clauses are computed.
+    """
+    # Count DOMAINS, not products. A domain can host several Show HN
+    # posts, so the cohort product count (36,877) understates the number
+    # of domains actually scanned (38,617). Reporting the product count
+    # here would understate our own coverage.
+    dom_total = meta.get("dom_total") or 0
+    dom_checked = meta.get("dom_checked") or 0
+    med = meta.get("cohorts_medium") or []
+    prod_total = sum(r["n"] for r in med)
+    prod_unverified = sum(r["unverified"] for r in med)
+    if not dom_total:
+        return ""
+    pct = dom_checked / dom_total * 100
+    if pct < 99.9:
+        return (f"域名层核验率 {pct:.1f}%（{dom_checked:,}/{dom_total:,}），"
+                f"尚未全部完成。")
+    total = dom_total
+    gh_total = meta.get("gh_repos_total") or 0
+    gh_checked = meta.get("gh_repos_checked") or 0
+    tail = ""
+    if gh_total:
+        gh_pct = gh_checked / gh_total * 100
+        tail = (f"GitHub 高置信层同为 {gh_pct:.1f}% 已核验"
+                f"（{gh_checked:,}/{gh_total:,}）。")
+    return (f"域名层已全量核验完成：{total:,} 个域名全部扫描完毕，"
+            f"无重复、无遗漏，每条判定都带证据（DNS 解析结果、HTTP 状态码、"
+            f"或两次 NXDOMAIN 确认）；对应 {prod_total:,} 个产品"
+            f"（{prod_total - prod_unverified:,} 个已核验）。" + tail)
+
+
 def _coverage_sentence(meta):
     """Describe verification coverage from the data, not from a constant.
 
@@ -71,7 +129,7 @@ def _coverage_sentence(meta):
         pct = r.get("rate")
         if pct is None:
             continue
-        if pct >= 99.5:
+        if pct >= 99.9:
             parts.append(f"{yr} 年已全部核验")
         elif pct >= 95:
             parts.append(f"{yr} 年核验率 {pct:.1f}%")
@@ -119,6 +177,12 @@ def render(products, cohorts, meta):
     A(f"| GitHub 可核验（高置信） | {meta['n_high']:,} |")
     A(f"| 仅域名可核验（中置信） | {meta['n_medium']:,} |")
     A(f"| 暂无判定 | {meta['n_none']:,} |")
+    A(f"| 其中：涉及的独立仓库 | {meta.get('gh_repos_total', 0):,} |")
+    A(f"| 其中：涉及的产品域名 | {meta.get('dom_total', 0):,} |")
+    A("")
+    A("> 上表数的是**产品**；仓库和域名是另外两套口径，"
+      "一个域名可承载多个产品，一个仓库可被多个产品引用。"
+      "下面两张表各自用自己那一层的分母，不能相加。")
     A("")
     A("**原始帖子按类型分布**")
     A("")
@@ -150,6 +214,8 @@ def render(products, cohorts, meta):
         A("")
         A(f"> 以下分组样本量不足 {MIN_N}，按规则不发布："
           f"{'、'.join(str(r['year']) for r in hidden)}")
+    A("")
+    A(_high_completeness_sentence(meta))
     A("")
     A("核验率还很低时，**不能**给出队列级存活率——"
       "样本偏差会让任何百分比失去意义。存活率只在下面两层的已核验子集上计算。")
@@ -189,10 +255,7 @@ def render(products, cohorts, meta):
     A("「拒爬」= 站点返回 403/405/429。这说明**站点还活着**，"
       "只是拒绝自动请求，因此计入「站点存活」，**不算死亡**。")
     A("")
-    A("> 域名层已全量核验完成：38,617 个产品域名全部扫描完毕，"
-      "无重复、无遗漏，每条判定都带证据（DNS 解析结果、HTTP 状态码、"
-      "或两次 NXDOMAIN 确认）。这一层的数字是终值，"
-      "不像 GitHub 层还在随采样推进。")
+    A("> " + _domain_completeness_sentence(meta))
     A("")
     A("**读法**：纵向读队列，不要横向比年份——今年刚上线的产品还没来得及死。"
       "已死占比只在已核验子集内计算，未核验的按原样列出不参与分母。"
@@ -491,6 +554,22 @@ def main():
     ledger = load(args.ledger)
     repo_status = load(args.repo)
     domain_status = load(args.domain)
+
+    # P33/P35: completeness of the GitHub tier is measured against the
+    # repo universe in the ledger, not against product counts. A repo
+    # can be shared by several Show HN posts; counting products would
+    # overstate how much of the tier has actually been checked.
+    gh_repos_total = len({d["repo"] for d in ledger
+                           if d.get("repo")})
+    gh_repos_checked = len({r["repo"] for r in repo_status
+                            if r.get("repo")})
+    # The domain tier's universe is the set of product_site domains in
+    # the ledger; the scanner covers exactly those.
+    dom_total = len({d["domain"] for d in ledger
+                     if d.get("kind") == "product_site"
+                     and d.get("domain")})
+    dom_checked = len({r["domain"] for r in domain_status
+                       if r.get("domain")})
     products = build(ledger, repo_status, domain_status)
     cohorts = cohort_table(products)
 
@@ -605,6 +684,10 @@ def main():
         "vertical_years": vertical_years,
         "vertical_sig": vertical_sig,
         "cat_n": cat_n,
+        "gh_repos_total": gh_repos_total,
+        "gh_repos_checked": gh_repos_checked,
+        "dom_total": dom_total,
+        "dom_checked": dom_checked,
         "coverage_rows": [
             {"year": r["year"],
              "rate": round((r["n"] - r["unverified"]) / r["n"] * 100, 1)
