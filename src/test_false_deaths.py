@@ -258,11 +258,40 @@ class TestVerdictSemantics(unittest.TestCase):
         self.assertIsNotNone(ev["survival_days"],
                             "dead rows must still carry survival_days")
 
-    def test_archived_is_dead(self):
+    def test_archived_is_not_dead(self):
+        """P20: an archived repo still exists - it is not deleted.
+
+        Measured impact: 100 of 207 rows in the `dead` bucket were archived
+        repos, i.e. the death count was inflated by ~46%. Some had pushed
+        code within days of being archived.
+        """
         ev = classify_repo({"archived": True, "pushed_at": "2020-01-01T00:00:00Z",
                             "created_at": "2019-01-01T00:00:00Z"}, "2024-01-01")
+        self.assertEqual(ev["verdict"], "archived")
+        self.assertNotEqual(ev["verdict"], "dead")
+
+    def test_archived_counts_as_not_maintained_not_dead(self):
+        """Archived is in the not-maintained rate but not the death rate."""
+        from analyze import cohort_table
+        products = [
+            {"launch_day": "2024-01-01", "verdict": "archived"},
+            {"launch_day": "2024-01-01", "verdict": "dead"},
+            {"launch_day": "2024-01-01", "verdict": "active"},
+            {"launch_day": "2024-01-01", "verdict": "active"},
+        ]
+        row = cohort_table(products)[0]
+        self.assertEqual(row["archived"], 1)
+        self.assertEqual(row["dead"], 1)
+        self.assertEqual(row["verified"], 4)
+        self.assertEqual(row["dead_pct_verified"], 25)          # 1 of 4
+        self.assertEqual(row["not_maintained_pct_verified"], 50)  # dead+archived
+
+    def test_only_404_is_dead(self):
+        """P20 + P13: the only sources of a death verdict are 404 and
+        explicit archived... which is now its own verdict. So `None`
+        (a real 404) is the only path to `dead`."""
+        ev = classify_repo(None, "2024-01-01")
         self.assertEqual(ev["verdict"], "dead")
-        self.assertEqual(ev["reason"], "archived")
 
     def test_fresh_push_is_active(self):
         import datetime

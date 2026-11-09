@@ -65,7 +65,7 @@ For each repo in the ledger:
 | Signal | Verdict |
 |---|---|
 | `GET /repos/{owner}/{repo}` → 404 | **dead** — repo deleted |
-| `archived == true` | **dead** — explicit |
+| `archived == true` | **archived** — read-only, still exists; not maintained, not dead |
 | `pushed_at` older than 365 days | **dormant** |
 | `pushed_at` 180–365 days | **slowing** |
 | `pushed_at` within 180 days | **active** |
@@ -74,8 +74,9 @@ For each repo in the ledger:
 | → 403 / 429 quota, or abuse throttle | *no verdict* — retry later, never a death |
 
 `unavailable` and `repo_blocked` are excluded from both the alive and the dead
-numerators and from the rate denominator. **Only a genuine 404 (or an explicit
-`archived`) is a death.** See P13–P17.
+numerators and from the rate denominator. `archived` counts toward
+"not maintained" but not toward "dead". **Only a genuine 404 is a death.**
+See P13–P20.
 
 Measured on the 2024-03 cohort, 2.7 years later (n=40):
 
@@ -288,6 +289,19 @@ sample: serial 36.6/min, 16 threads 196.8/min; in production 239/min, i.e.
 regression test now pins that equivalence. Rule: when a sweep is too slow,
 parallelise it and prove the output is unchanged; never loosen the rules to
 make the number look better.
+
+### P20 — Archived is not dead (2026-11-09)
+Incident: `archived == true` was mapped to the `dead` verdict. An archived
+repository still exists, its code is still there, its stars are still there —
+the author simply marked it read-only. Measured on the live ledger: **100 of
+207 rows in the `dead` bucket were archived repos, so the death count was
+inflated by ~46%.** A 25-row sample of "dead" rows returned 404 for only 10;
+the other 15 were alive-and-archived. Some were archived only days after
+their last push (e.g. one pushed 2026-10-31 and was archived shortly after).
+Fix: `archived` is its own verdict. It counts toward "not maintained" and NOT
+toward "dead". **Only a genuine 404 means the repo is gone.** This matches the
+project's own rule that `archived`, long-no-push and deletion must stay
+separate. Effect on the published rate: death 8% -> 4%, not-maintained 69%.
 
 ---
 

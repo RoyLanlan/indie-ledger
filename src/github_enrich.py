@@ -186,8 +186,24 @@ def classify_repo(info, launch_day):
         "open_issues": info.get("open_issues_count"),
     })
     if info.get("archived"):
-        ev["verdict"] = "dead"
-        ev["reason"] = "archived"
+        # P20: archived is NOT death. The repo still exists, the code is
+        # still there, and the stars are still there. `archived` means the
+        # author declared it read-only - usually because the project is
+        # done, stable, superseded, or was handed over. It is a "not
+        # maintained" signal, not an "abandoned and gone" signal.
+        #
+        # Collapsing archived into dead inflated the death count by ~46%
+        # and mislabelled projects that had pushed code within the last
+        # few weeks (e.g. one archived 9 days after its last push).
+        ev["verdict"] = "archived"
+        ev["reason"] = "archived (read-only, still exists)"
+        # Archived repos still have a meaningful age; keep it for the
+        # survival curve.
+        try:
+            pushed = datetime.date.fromisoformat(ev["pushed_at"])
+            ev["age_days"] = (datetime.date.today() - pushed).days
+        except Exception:
+            ev["age_days"] = None
         return ev
     try:
         pushed = datetime.date.fromisoformat(ev["pushed_at"])

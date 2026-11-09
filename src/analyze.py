@@ -99,6 +99,7 @@ def cohort_table(products, min_n=MIN_N):
         dormant = vc["dormant"]
         alive = vc["active"]
         slowing = vc["slowing"]
+        archived = vc["archived"]
         unv = vc["unverified"]
         alive_site = vc["alive"]
         degraded = vc["degraded"]
@@ -121,19 +122,22 @@ def cohort_table(products, min_n=MIN_N):
         row = {
             "year": y, "n": n,
             "dead": dead, "dormant": dormant, "active": alive,
-            "slowing": slowing, "unverified": unv,
+            "slowing": slowing, "archived": archived, "unverified": unv,
             "alive_site": alive_site,
             "site_blocked": site_blocked,
             "degraded": degraded,
             "unavailable": unavailable,
             "verified": verified,
             "dead_pct": dead * 100 // n if n else 0,
-            "not_maintained_pct": (dead + dormant + slowing) * 100 // n if n else 0,
+            # P20: archived is "not maintained", not "dead". It counts toward
+            # the not-maintained rate but NOT toward the death rate.
+            "not_maintained_pct":
+                (dead + dormant + slowing + archived) * 100 // n if n else 0,
             # verified-subset rates: denominator excludes unverified AND
             # unavailable rows
             "dead_pct_verified": dead * 100 // verified if verified else 0,
             "not_maintained_pct_verified":
-                (dead + dormant + slowing) * 100 // verified if verified else 0,
+                (dead + dormant + slowing + archived) * 100 // verified if verified else 0,
             "publishable": n >= min_n,
         }
         rows.append(row)

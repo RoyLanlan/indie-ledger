@@ -102,16 +102,19 @@ def render(products, cohorts, meta):
 
     A("**表 2.2　高置信层（GitHub 核验）已核验子集**")
     A("")
-    A("| 上线年份 | 已核验 | 已死 | 停更 | 放缓 | 活跃 | 受限 | 已死占比 | 不再维护占比 |")
-    A("|---|---|---|---|---|---|---|---|---|")
+    A("| 上线年份 | 已核验 | 已死 | 停更 | 放缓 | 归档 | 活跃 | 受限 | 已死占比 | 不再维护占比 |")
+    A("|---|---|---|---|---|---|---|---|---|---|")
     for r in meta["cohorts_high"]:
         ver = r["n"] - r["unverified"]
         if ver < MIN_N:
             continue
         A(f"| {r['year']} | {ver:,} | {r['dead']:,} | {r['dormant']:,} | "
-          f"{r['slowing']:,} | {r['active']:,} | {r.get('unavailable', 0):,} | "
+          f"{r['slowing']:,} | {r.get('archived', 0):,} | {r['active']:,} | "
+          f"{r.get('unavailable', 0):,} | "
           f"{r['dead_pct_verified']}% | {r['not_maintained_pct_verified']}% |")
     A("")
+    A("「归档」= 仓库被作者设为只读，**代码仍在，仓库仍可访问**，只是不再更新。"
+      "归档计入「不再维护」，**不计入「已死」**——只有仓库 404（被删除）才算死。")
     A("「受限」= HTTP 451（法律原因不可用）或仓库因 ToS/DMCA 被封禁（HTTP 403）。"
       "这类仓库仍然存在，既不算死也不算活，已排除在已死占比与不再维护占比的分母之外。")
     A("")
@@ -143,20 +146,23 @@ def render(products, cohorts, meta):
         A("当前尚未取得 GitHub 核验结果，本节留空。")
         A("")
     else:
-        A("只看 GitHub 状态可判定的产品。这层证据最硬：仓库被删除或被归档是无歧义的。")
+        A("只看 GitHub 状态可判定的产品。这层证据最硬：仓库被删除（404）是无歧义的；"
+          "仓库被**归档**是「作者宣布不再更新」，代码仍在，所以归入「不再维护」而不是「已死」。")
         A("")
-        A("| 上线年份 | 产品数 | 已死 | 停更 | 活跃 | 已死占比 | 不再维护占比 |")
-        A("|---|---|---|---|---|---|---|")
+        A("| 上线年份 | 产品数 | 已死 | 停更 | 放缓 | 归档 | 活跃 | 已死占比 | 不再维护占比 |")
+        A("|---|---|---|---|---|---|---|---|---|")
         for r in meta["cohorts_high"]:
             if not r["publishable"]:
                 continue
             A(f"| {r['year']} | {r['n']:,} | {r['dead']:,} | {r['dormant']:,} | "
-              f"{r['active']:,} | {r['dead_pct']}% | {r['not_maintained_pct']}% |")
+              f"{r['slowing']:,} | {r.get('archived', 0):,} | {r['active']:,} | "
+              f"{r['dead_pct']}% | {r['not_maintained_pct']}% |")
         A("")
         A(f"**高置信层整体**：{meta['high_dead']:,} / {meta['n_high']:,} 已死"
           f"（{fmt_pct(meta['high_dead'], meta['n_high'])}）；"
-          f"不再维护（含停更）{meta['high_notmaint']:,}"
-          f"（{fmt_pct(meta['high_notmaint'], meta['n_high'])}）。")
+          f"不再维护（含停更、放缓、归档）{meta['high_notmaint']:,}"
+          f"（{fmt_pct(meta['high_notmaint'], meta['n_high'])}），"
+          f"其中归档 {meta.get('high_archived', 0):,} 个。")
         A("")
 
     # --- medium tier ---
@@ -274,8 +280,11 @@ def main():
         "cohorts_high": cohorts_high,
         "cohorts_medium": cohorts_medium,
         "high_dead": sum(1 for p in high if p["verdict"] == "dead"),
+        # P20: archived counts as "not maintained", not "dead".
+        "high_archived": sum(1 for p in high if p["verdict"] == "archived"),
         "high_notmaint": sum(1 for p in high
-                             if p["verdict"] in ("dead", "dormant", "slowing")),
+                             if p["verdict"] in ("dead", "dormant", "slowing",
+                                                "archived")),
         "medium_verdicts": medium_verdicts,
         "evidence_sample": ev_sample,
         "rules_version": "2026-11-09",
