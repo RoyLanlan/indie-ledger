@@ -107,7 +107,10 @@ def stage_verify():
     # L2a -- needs PAT
     if os.path.exists(TOKEN_FILE):
         cmd = [sys.executable, os.path.join(HERE, "github_sampler.py"),
-               "--idle-sleep", "60"]
+               "--idle-sleep", "60",
+               # P15: 0.2s bursts trip GitHub's abuse detection, which returns
+               # 403 without spending core quota and livelocks the sampler.
+               "--delay", "0.35", "--cooldown", "300"]
         print("verify: starting GitHub sampler (bounded to 1 pass)")
         try:
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=5400)
