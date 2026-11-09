@@ -1,0 +1,26 @@
+# credentials
+.env
+*token*
+.github_token
+github-token
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# scratch / local
+data/snapshots/
+*.log
+nohup.out
+backfill_checkpoint.json
+
+# editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# large derived artifacts (regenerate with analyze.py)
+data/products.json
