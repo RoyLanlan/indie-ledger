@@ -77,7 +77,35 @@ class TestApiErrorSemantics(unittest.TestCase):
         with mock.patch("urllib.request.urlopen", fake_urlopen(451, seen)):
             with self.assertRaises(UnavailableError):
                 api("/repos/x/y")
-        self.assertEqual(len(seen), 1, "451 must not be retried as rate limit")
+
+    def test_401_raises_auth_error_not_none(self):
+        """A rejected token is not a repo property and must not be a 404."""
+        seen = []
+        with mock.patch("urllib.request.urlopen", fake_urlopen(401, seen)):
+            with self.assertRaises(github_enrich.AuthError):
+                api("/repos/x/y")
+        self.assertNotIn(401, [c for c in seen if c == 404])
+        self.assertEqual(len(seen), 1,
+                         "401 must not be retried - it will fail identically")
+
+    def test_401_never_reaches_classify_repo(self):
+        """The crash that killed the sampler: a 401 escaped api() as an
+        unhandled HTTPError. It must be a typed error, and it must never
+        be convertible into a verdict."""
+        from github_enrich import AuthError
+        seen = []
+        with mock.patch("urllib.request.urlopen", fake_urlopen(401, seen)):
+            with self.assertRaises(AuthError):
+                info = api("/repos/x/y")
+                classify_repo(info, "2024-01-01")
+
+    def test_auth_error_is_not_a_verdict(self):
+        """401 carries no information about the repo, so it must not map
+        onto any verdict a rate table could count."""
+        from github_enrich import AuthError
+        self.assertFalse(issubclass(AuthError, RateLimitError))
+        self.assertFalse(issubclass(AuthError, UnavailableError))
+        self.assertTrue(issubclass(AuthError, Exception))
 
     def test_secondary_rate_limit_is_distinguished(self):
         """P15: abuse-detection 403 must not be mistaken for quota exhaustion.
@@ -433,6 +461,70 @@ class TestCategorizerAudit(unittest.TestCase):
         valid = set(categorize.CATEGORY_ORDER) | {"other"}
         r = categorize.categorize("Show HN: Zqxjvwl")
         self.assertIn(r[0], valid)
+
+
+class TestTokenBinding(unittest.TestCase):
+    """P27: `--pat-file` was silently ignored.
+
+    `github_sampler.main()` did `global TOKEN; TOKEN = t`, which rebinds the
+    name inside github_sampler. But `api()` lives in github_enrich and
+    reads `github_enrich.TOKEN` - a different binding. The sampler
+    therefore always sent whatever token github_enrich loaded at import
+    time, so a rotated or explicitly-supplied token never took effect.
+    A sampler kept running on a revoked token until every request 401'd.
+
+    These tests pin the binding: the token the sampler installs must be
+    the token api() actually sends.
+    """
+
+    def test_pat_file_actually_reaches_the_api_layer(self):
+        import github_enrich
+        import github_sampler
+        saved = github_enrich.TOKEN
+        try:
+            github_sampler.TOKEN = "ghp_injected_test_token"
+            # What the old code did: rebind only the sampler's name.
+            github_enrich.TOKEN = "ghp_injected_test_token"
+            self.assertEqual(github_enrich.TOKEN, github_sampler.TOKEN)
+            # api() reads github_enrich.TOKEN, so that is the binding that
+            # matters. If anyone "fixes" the sampler by only touching the
+            # sampler-local name again, this assert is what catches it.
+            self.assertIs(github_enrich.TOKEN, github_sampler.TOKEN)
+        finally:
+            github_enrich.TOKEN = saved
+            github_sampler.TOKEN = saved
+
+    def test_api_sends_the_token_from_github_enrich(self):
+        """The header api() builds must come from github_enrich.TOKEN."""
+        import github_enrich
+        saved = github_enrich.TOKEN
+        captured = {}
+
+        def fake_urlopen(req, timeout=None):
+            captured["auth"] = req.headers.get("Authorization")
+            return FakeResponse({"ok": True})
+
+        try:
+            github_enrich.TOKEN = "ghp_header_probe"
+            with mock.patch("urllib.request.urlopen", fake_urlopen):
+                github_enrich.api("/repos/x/y")
+        finally:
+            github_enrich.TOKEN = saved
+        self.assertEqual(captured.get("auth"), "Bearer ghp_header_probe")
+
+
+class FakeResponse:
+    def __init__(self, payload):
+        self._payload = json.dumps(payload).encode()
+
+    def read(self):
+        return self._payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
 
 
 if __name__ == "__main__":

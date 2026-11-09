@@ -20,9 +20,10 @@ from collections import Counter, defaultdict
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+import github_enrich
 from github_enrich import (api, rate_limit, classify_repo, TOKEN,
                            RateLimitError, UnavailableError,
-                           SecondaryRateLimit, BlockedRepo)
+                           SecondaryRateLimit, BlockedRepo, AuthError)
 
 
 def load_ledger(path):
@@ -82,13 +83,20 @@ def main():
         lock_fh.flush()
         print(f"lock acquired: {args.lock}")
 
-    global TOKEN
+    # P27: `--pat-file` was silently ignored. `global TOKEN` rebinds the
+    # name in THIS module, but `api()` reads `github_enrich.TOKEN` - a
+    # different module-level binding. The sampler therefore always sent
+    # whatever token github_enrich loaded at import time, and a rotated
+    # or explicitly-supplied token never took effect. That is exactly how
+    # a sampler kept running on a revoked token until every request
+    # returned 401. Set the token in github_enrich, where api() reads it.
     if args.pat_file:
         t = load_token_from_file(args.pat_file)
         if t:
+            github_enrich.TOKEN = t
             TOKEN = t
             print("PAT loaded from file")
-    print("auth:", "PAT" if TOKEN else "unauth (60/hr)")
+    print("auth:", "PAT" if github_enrich.TOKEN else "unauth (60/hr)")
 
     rows = load_ledger(args.ledger)
     repo_launch = {}
@@ -117,7 +125,15 @@ def main():
     limit = args.batch or 10**9
 
     while checked < limit and todo:
-        rl = rate_limit()
+        try:
+            rl = rate_limit()
+        except AuthError:
+            # The token was rejected. Nothing was written; stop cleanly so
+            # the operator can rotate it.
+            print("\n*** GitHub rejected the token (HTTP 401). ***\n"
+                  "*** No verdict recorded. Stopping so the token can be "
+                  "rotated. ***", flush=True)
+            return 2
         if not rl:
             print("could not read rate limit; sleeping", file=sys.stderr)
             time.sleep(args.idle_sleep)
@@ -144,6 +160,19 @@ def main():
                 out.flush()
                 time.sleep(120)
                 break
+            except AuthError:
+                # 401: the token is bad, expired or revoked. This says
+                # nothing about the repo, so no verdict may be recorded.
+                # Retrying will not help either - every request will 401.
+                # Put the repo back, stop the run cleanly and let the
+                # operator rotate the token.
+                todo.insert(0, repo)
+                out.flush()
+                print(f"\n*** GitHub rejected the token (HTTP 401) on {repo}. ***\n"
+                      f"*** No verdict recorded. Stopping so the token can be "
+                      f"rotated; nothing was written for this repo. ***",
+                      flush=True)
+                return 2
             except UnavailableError:
                 # 451: repo exists but has been made unavailable (legal takedown).
                 # That is neither "deleted" nor "alive" - record it as its own

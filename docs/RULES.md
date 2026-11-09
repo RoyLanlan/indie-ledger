@@ -359,6 +359,34 @@ vertical tables are always cut by launch year, and the comparison baseline
 for the significance test is the same launch year's cohort rate, never the
 pooled rate.
 
+### P27 — A credential that silently fails to bind is worse than one that errors (2026-11-09)
+Incident: the GitHub sampler died with an unhandled `HTTPError: 401`. Two
+separate defects were behind it. First, `api()` had no 401 branch at all:
+the error fell through to the generic retry path, retried three times, then
+escaped as an unhandled exception and killed the run mid-batch. Second and
+worse, `--pat-file` never had any effect. `github_sampler.main()` did
+`global TOKEN; TOKEN = t`, which rebinds the name inside `github_sampler`,
+but `api()` lives in `github_enrich` and reads `github_enrich.TOKEN` - a
+different binding. The sampler therefore always sent whatever token
+`github_enrich` loaded at import time, so a rotated token never took
+effect and a revoked token kept the sampler running until every request
+returned 401. Fixes: (a) `api()` raises a dedicated `AuthError` on 401 -
+never retried, because the same request fails identically - and the
+sampler, the repair script and the audit all stop cleanly with exit code 2
+and record no verdict; (b) the sampler installs the token in
+`github_enrich`, where `api()` actually reads it; (c) `pipeline.py`
+propagates exit 2 instead of reporting a normal run. Rule: a credential
+path that cannot be proven to reach the HTTP layer is not a working
+credential path.
+
+### P28 — An audit must abort on a rejected token, not merely count it (2026-11-09)
+P21 already required an audit to fail when too many lookups were
+inconclusive. A 401 deserves a stronger response than being counted as
+one inconclusive row: every subsequent request would fail the same way, so
+the audit now aborts on the first 401, reports that it has no signal, and
+changes nothing on disk. Rule: an audit that cannot authenticate has no
+result, and a result it cannot produce is not a PASS.
+
 ---
 
 ## 7. Pipeline contract

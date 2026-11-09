@@ -85,6 +85,16 @@ class BlockedRepo(Exception):
     """
 
 
+class AuthError(Exception):
+    """HTTP 401 Unauthorized — the token is missing, expired or revoked.
+
+    This is NOT a property of the repo being checked, so it must never
+    produce a verdict for that repo. It is also not a throttle: retrying
+    the same request gets the same 401. An invalid token used to escape
+    `api()` as an unhandled HTTPError and kill the sampler mid-run.
+    """
+
+
 def _classify_403(body):
     """Return one of: 'quota', 'secondary', 'blocked', 'unknown'."""
     b = body.lower()
@@ -110,6 +120,12 @@ def api(path, timeout=30, retries=3):
         except urllib.error.HTTPError as e:
             if e.code == 404:
                 return None
+            if e.code == 401:
+                # Bad or revoked token. Retrying cannot help: the same
+                # request gets the same 401. Fail fast with a dedicated
+                # type so the caller can stop cleanly instead of the
+                # exception escaping and killing the run.
+                raise AuthError(f"HTTP 401 (unauthorized): {path}")
             if e.code == 451:
                 # blocked for legal reasons: exists, but unavailable
                 raise UnavailableError(f"HTTP 451 (unavailable): {path}")
@@ -138,7 +154,7 @@ def api(path, timeout=30, retries=3):
                 raise
             time.sleep(2 * (attempt + 1))
         except (RateLimitError, UnavailableError, SecondaryRateLimit,
-                BlockedRepo):
+                BlockedRepo, AuthError):
             raise
         except Exception:
             if attempt == retries - 1:
@@ -153,6 +169,10 @@ def rate_limit():
         d = api("/rate_limit")
     except RateLimitError:
         return None
+    except AuthError:
+        # A rejected token is not a throttle. Let it propagate so the
+        # caller stops cleanly instead of treating it as "no quota info".
+        raise
     if not d:
         return None
     r = d.get("resources", {})

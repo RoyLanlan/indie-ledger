@@ -119,6 +119,13 @@ def stage_verify():
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=5400)
             print(r.stdout[-1500:])
             ran.append(f"github ({r.returncode})")
+            # Exit 2 means the token was rejected (HTTP 401). Nothing was
+            # written for the repo in flight. Reporting that as a normal
+            # run would hide a token rotation that needs doing.
+            if r.returncode == 2:
+                print("verify: GitHub rejected the token (401). "
+                      "No verdicts were recorded. Rotate the PAT and re-run.")
+                return 2
         except subprocess.TimeoutExpired as e:
             out = e.stdout.decode() if isinstance(e.stdout, bytes) else (e.stdout or "")
             print("verify: github sampler hit its window, stopping cleanly")

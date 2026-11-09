@@ -108,6 +108,7 @@ def main():
     real_dead = 0
     false_dead = []
     inconclusive = []
+    auth_failed = False
     for i, r in enumerate(sample, 1):
         repo = r["repo"]
         verdict, detail = check(repo, token)
@@ -120,11 +121,26 @@ def main():
             else:
                 status = f"WRONG -> alive (pushed {detail.get('pushed_at')})"
             false_dead.append((repo, detail))
+        elif verdict == "http401":
+            # The token is rejected. Every remaining request would fail
+            # the same way, so stop now instead of burning the sample on
+            # guaranteed failures. A 401 is never a verdict.
+            auth_failed = True
+            status = "inconclusive (http401 - token rejected)"
+            print(f"  [{i:>3}/{len(sample)}] {repo:<45} {status}")
+            break
         else:
             status = f"inconclusive ({verdict})"
             inconclusive.append((repo, detail))
         print(f"  [{i:>3}/{len(sample)}] {repo:<45} {status}")
         time.sleep(0.4)
+
+    if auth_failed:
+        print("\nFAIL: GitHub rejected the token (HTTP 401).")
+        print("The audit has no signal - no death verdict can be confirmed "
+              "without a working token.")
+        print("Rotate the token, then re-run. Nothing was modified.")
+        return 2
 
     n = len(sample)
     false_rate = len(false_dead) / n * 100 if n else 0

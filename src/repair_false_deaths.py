@@ -20,7 +20,8 @@ import json, os, sys, argparse, datetime, shutil
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from github_enrich import api, RateLimitError, UnavailableError, classify_repo
+from github_enrich import (api, RateLimitError, UnavailableError,
+                           classify_repo, AuthError)
 
 LEDGER = os.path.join(HERE, "data", "ledger.jsonl")
 STATUS = os.path.join(HERE, "data", "repo_status.jsonl")
@@ -86,6 +87,12 @@ def main():
             # It was never deleted - record it as `unavailable`.
             blocked.append(repo)
             continue
+        except AuthError:
+            # 401: the token is bad. Say nothing about the repo and stop -
+            # every remaining request would fail the same way.
+            print(f"\n*** GitHub rejected the token (HTTP 401) on {repo}. ***")
+            print("*** Stopping. Rows checked so far stay untouched. ***")
+            return 2
         if info is None:
             confirmed_gone.append(repo)
         else:
