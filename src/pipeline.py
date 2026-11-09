@@ -110,7 +110,10 @@ def stage_verify():
                "--idle-sleep", "60",
                # P15: 0.2s bursts trip GitHub's abuse detection, which returns
                # 403 without spending core quota and livelocks the sampler.
-               "--delay", "0.35", "--cooldown", "300"]
+               "--delay", "0.35", "--cooldown", "300",
+               # Single-writer lock: a long-running standalone sampler must
+               # never overlap with the cron-triggered one (P18).
+               "--lock", os.path.join(LOCKS, "github_sampler.lock")]
         print("verify: starting GitHub sampler (bounded to 1 pass)")
         try:
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=5400)

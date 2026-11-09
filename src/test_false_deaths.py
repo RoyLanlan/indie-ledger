@@ -171,6 +171,33 @@ class TestApiErrorSemantics(unittest.TestCase):
         self.assertIn('"verdict": "repo_blocked"', src)
         self.assertNotIn('"verdict": "blocked"', src)
 
+    def test_sampler_takes_a_single_writer_lock(self):
+        """P18: two samplers must never append to the same JSONL at once.
+
+        The cron-triggered instance and a long-running standalone instance
+        would otherwise interleave writes and double-count repos.
+        """
+        import fcntl
+        import tempfile
+        import os
+        import subprocess
+        import sys
+        here = os.path.dirname(os.path.abspath(__file__))
+        lock = os.path.join(tempfile.mkdtemp(), "s.lock")
+        # hold the lock in this process
+        fh = open(lock, "a+")
+        fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        try:
+            r = subprocess.run(
+                [sys.executable, os.path.join(here, "github_sampler.py"),
+                 "--lock", lock, "--batch", "1"],
+                capture_output=True, text=True, timeout=120)
+            out = (r.stdout or "") + (r.stderr or "")
+            self.assertIn("another sampler holds", out)
+        finally:
+            fcntl.flock(fh, fcntl.LOCK_UN)
+            fh.close()
+
 
 class TestVerdictSemantics(unittest.TestCase):
     def test_none_is_dead(self):

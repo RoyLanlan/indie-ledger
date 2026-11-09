@@ -269,6 +269,15 @@ denominator. Fix: the repo tier emits `repo_blocked`; the domain tier keeps
 the whole ledger — when two layers need the same word for different things,
 rename one of them.
 
+### P18 — One writer per data file (2026-11-09)
+Incident: the sampler appends to a shared JSONL. A long-running standalone
+instance and the cron-triggered instance both wrote to it, which would
+interleave lines and double-count repos. `pipeline.py`'s own stage lock did
+not help, because the standalone instance ran outside that lock. Fix: the
+sampler takes its own `flock` (`.locks/github_sampler.lock`) and exits
+immediately if another instance holds it. Rule: any component that appends to
+a shared file must hold its own lock, not rely on the caller's.
+
 ---
 
 ## 7. Pipeline contract

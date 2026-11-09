@@ -59,7 +59,28 @@ def main():
                          "secondary rate limit fires")
     ap.add_argument("--cooldown", type=int, default=300,
                     help="seconds to back off after a secondary rate limit")
+    ap.add_argument("--lock", default="", help="path to the flock file")
     args = ap.parse_args()
+
+    # Single-writer lock. The sampler appends to a shared JSONL, so two
+    # concurrent instances would interleave writes and could double-count a
+    # repo. The cron-driven instance and a long-running standalone instance
+    # must never overlap.
+    lock_fh = None
+    if args.lock:
+        import fcntl
+        os.makedirs(os.path.dirname(args.lock), exist_ok=True)
+        lock_fh = open(args.lock, "a+")
+        try:
+            fcntl.flock(lock_fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            print(f"another sampler holds {args.lock}; exiting")
+            return 0
+        lock_fh.seek(0)
+        lock_fh.truncate()
+        lock_fh.write(str(os.getpid()))
+        lock_fh.flush()
+        print(f"lock acquired: {args.lock}")
 
     global TOKEN
     if args.pat_file:
