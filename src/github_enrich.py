@@ -46,6 +46,57 @@ def load_token():
 TOKEN = load_token()
 
 
+class RateLimitError(Exception):
+    """Raised when GitHub rate-limits us and retries are exhausted.
+
+    This MUST NOT be confused with a 404. A rate-limited lookup is not
+    evidence that a repo was deleted.
+    """
+
+
+class UnavailableError(Exception):
+    """Raised for HTTP 451 (repo blocked for legal reasons) and similar.
+
+    451 is NOT a 404. The repo still exists; it has just been made
+    unavailable. Treating it as "deleted" would be a false death.
+    """
+
+
+class SecondaryRateLimit(Exception):
+    """GitHub's abuse-detection 403.
+
+    This is NOT the core quota: it does not consume rate-limit budget. It is
+    a separate throttle that fires on bursty request patterns. Retry it with
+    a long backoff, but do NOT treat it as "quota exhausted".
+    """
+
+
+class BlockedRepo(Exception):
+    """HTTP 403 "Repository access blocked" — a PER-REPO block.
+
+    GitHub returns 403 for three unrelated reasons:
+      1. core quota exhausted (headers say so, body says rate limit)
+      2. abuse detection / secondary rate limit (body says so)
+      3. this specific repo is blocked (ToS or DMCA takedown)
+
+    Case 3 is a property of the repository, not of our request rate. It must
+    NOT trigger a sleep-and-retry loop, and it must NOT be recorded as a
+    death - the repo still exists, it is just inaccessible.
+    """
+
+
+def _classify_403(body):
+    """Return one of: 'quota', 'secondary', 'blocked', 'unknown'."""
+    b = body.lower()
+    if "repository access blocked" in b or '"block"' in b:
+        return "blocked"
+    if "secondary rate limit" in b or "abuse detection" in b:
+        return "secondary"
+    if "rate limit" in b or "api rate limit" in b:
+        return "quota"
+    return "unknown"
+
+
 def api(path, timeout=30, retries=3):
     h = dict(UA)
     if TOKEN:
@@ -59,24 +110,49 @@ def api(path, timeout=30, retries=3):
         except urllib.error.HTTPError as e:
             if e.code == 404:
                 return None
+            if e.code == 451:
+                # blocked for legal reasons: exists, but unavailable
+                raise UnavailableError(f"HTTP 451 (unavailable): {path}")
             if e.code in (403, 429):
-                # rate limited — back off hard
+                # 403 means three different things. Read the body to tell them
+                # apart: quota exhaustion vs abuse throttle vs a per-repo
+                # takedown. Conflating them caused a livelock AND false deaths.
+                body = ""
+                try:
+                    body = e.read().decode("utf-8", "ignore")
+                except Exception:
+                    pass
+                kind = _classify_403(body) if e.code == 403 else "quota"
+                if kind == "blocked":
+                    raise BlockedRepo(
+                        f"repo blocked (ToS/DMCA): {path} :: {body[:140]}")
+                if kind == "secondary":
+                    raise SecondaryRateLimit(
+                        f"secondary rate limit on {path}: {body[:120]}")
+                # quota exhaustion -> back off and retry
                 wait = 60 if e.code == 429 else 30
                 print(f"   rate limited ({e.code}); sleeping {wait}s", file=sys.stderr)
                 time.sleep(wait)
                 continue
             if attempt == retries - 1:
-                return None
+                raise
             time.sleep(2 * (attempt + 1))
+        except (RateLimitError, UnavailableError, SecondaryRateLimit,
+                BlockedRepo):
+            raise
         except Exception:
             if attempt == retries - 1:
-                return None
+                raise
             time.sleep(1.5 * (attempt + 1))
-    return None
+    # every attempt hit a rate limit — the lookup did NOT succeed
+    raise RateLimitError(f"rate limited after {retries} attempts: {path}")
 
 
 def rate_limit():
-    d = api("/rate_limit")
+    try:
+        d = api("/rate_limit")
+    except RateLimitError:
+        return None
     if not d:
         return None
     r = d.get("resources", {})
@@ -166,7 +242,13 @@ def main():
     for i, repo in enumerate(repos):
         if repo in done:
             continue
-        info = api(f"/repos/{repo}")
+        try:
+            info = api(f"/repos/{repo}")
+        except RateLimitError as e:
+            # do NOT record a verdict we could not verify
+            print(f"   rate limited on {repo}, skipping (will retry later)", flush=True)
+            time.sleep(120)
+            continue
         ev = classify_repo(info, repo_launch[repo])
         rec = {"repo": repo, "launch_day": repo_launch[repo], **ev,
                "checked_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")}

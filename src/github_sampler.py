@@ -20,7 +20,9 @@ from collections import Counter, defaultdict
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from github_enrich import api, rate_limit, classify_repo, TOKEN
+from github_enrich import (api, rate_limit, classify_repo, TOKEN,
+                           RateLimitError, UnavailableError,
+                           SecondaryRateLimit, BlockedRepo)
 
 
 def load_ledger(path):
@@ -52,6 +54,11 @@ def main():
     ap.add_argument("--pat-file", default="")
     ap.add_argument("--batch", type=int, default=0, help="0 = run until quota exhausted")
     ap.add_argument("--idle-sleep", type=int, default=60)
+    ap.add_argument("--delay", type=float, default=0.35,
+                    help="seconds between repo lookups; raise this if the "
+                         "secondary rate limit fires")
+    ap.add_argument("--cooldown", type=int, default=300,
+                    help="seconds to back off after a secondary rate limit")
     args = ap.parse_args()
 
     global TOKEN
@@ -105,14 +112,64 @@ def main():
         batch = min(rem - 1, limit - checked, len(todo))
         for i in range(batch):
             repo = todo.pop(0)
-            info = api(f"/repos/{repo}")
+            try:
+                info = api(f"/repos/{repo}")
+            except RateLimitError:
+                # A rate-limited lookup is NOT evidence the repo was deleted.
+                # Put it back and stop the batch without recording a verdict.
+                todo.insert(0, repo)
+                print(f"   rate limited on {repo}; no verdict recorded, "
+                      f"backing off", flush=True)
+                out.flush()
+                time.sleep(120)
+                break
+            except UnavailableError:
+                # 451: repo exists but has been made unavailable (legal takedown).
+                # That is neither "deleted" nor "alive" - record it as its own
+                # verdict so it is excluded from death rates.
+                ev = {"verdict": "unavailable",
+                      "reason": "HTTP 451 (repo blocked for legal reasons)",
+                      "survival_days": None}
+                rec = {"repo": repo, "launch_day": repo_launch[repo], **ev,
+                       "checked_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")}
+                out.write(json.dumps(rec, ensure_ascii=False) + "\n")
+                out.flush()
+                vc[ev["verdict"]] += 1
+                checked += 1
+                continue
+            except BlockedRepo:
+                # 403 "Repository access blocked" - a per-repo ToS/DMCA block.
+                # The repo still exists. It is not dead and it is not alive.
+                # Record it as its own verdict and move on immediately; do not
+                # sleep, because this says nothing about our request rate.
+                ev = {"verdict": "blocked",
+                      "reason": "HTTP 403 (repo access blocked, ToS/DMCA)",
+                      "survival_days": None}
+                rec = {"repo": repo, "launch_day": repo_launch[repo], **ev,
+                       "checked_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")}
+                out.write(json.dumps(rec, ensure_ascii=False) + "\n")
+                out.flush()
+                vc[ev["verdict"]] += 1
+                checked += 1
+                continue
+            except SecondaryRateLimit:
+                # Abuse-detection throttle. It does NOT consume core quota, so
+                # sleeping until the quota resets would be wrong. Back off hard
+                # and slow the request cadence permanently for this run.
+                todo.insert(0, repo)
+                print(f"   secondary rate limit on {repo}; no verdict recorded, "
+                      f"backing off {args.cooldown}s", flush=True)
+                out.flush()
+                delay = args.cooldown
+                time.sleep(delay)
+                break
             ev = classify_repo(info, repo_launch[repo])
             rec = {"repo": repo, "launch_day": repo_launch[repo], **ev,
                    "checked_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")}
             out.write(json.dumps(rec, ensure_ascii=False) + "\n")
             vc[ev["verdict"]] += 1
             checked += 1
-            time.sleep(0.2 + random.uniform(0, 0.15))
+            time.sleep(args.delay + random.uniform(0, 0.1))
         out.flush()
         print(f"  batch done: checked={checked} {dict(vc)} rate={rate_limit()}", flush=True)
 

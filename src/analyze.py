@@ -102,17 +102,23 @@ def cohort_table(products, min_n=MIN_N):
         unv = vc["unverified"]
         alive_site = vc["alive"]
         degraded = vc["degraded"]
-        verified = n - unv
+        # `unavailable` (HTTP 451, legal takedown) and `blocked` (HTTP 403,
+        # per-repo ToS/DMCA takedown) are neither alive nor dead. They are
+        # excluded from both numerators and from the rate denominator.
+        unavailable = vc["unavailable"] + vc["blocked"]
+        verified = n - unv - unavailable
         row = {
             "year": y, "n": n,
             "dead": dead, "dormant": dormant, "active": alive,
             "slowing": slowing, "unverified": unv,
             "alive_site": alive_site,
             "degraded": degraded,
+            "unavailable": unavailable,
             "verified": verified,
             "dead_pct": dead * 100 // n if n else 0,
             "not_maintained_pct": (dead + dormant + slowing) * 100 // n if n else 0,
-            # verified-subset rates: denominator excludes unverified rows
+            # verified-subset rates: denominator excludes unverified AND
+            # unavailable rows
             "dead_pct_verified": dead * 100 // verified if verified else 0,
             "not_maintained_pct_verified":
                 (dead + dormant + slowing) * 100 // verified if verified else 0,

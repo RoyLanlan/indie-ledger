@@ -102,15 +102,18 @@ def render(products, cohorts, meta):
 
     A("**表 2.2　高置信层（GitHub 核验）已核验子集**")
     A("")
-    A("| 上线年份 | 已核验 | 已死 | 停更 | 放缓 | 活跃 | 已死占比 | 不再维护占比 |")
-    A("|---|---|---|---|---|---|---|---|")
+    A("| 上线年份 | 已核验 | 已死 | 停更 | 放缓 | 活跃 | 受限 | 已死占比 | 不再维护占比 |")
+    A("|---|---|---|---|---|---|---|---|---|")
     for r in meta["cohorts_high"]:
         ver = r["n"] - r["unverified"]
         if ver < MIN_N:
             continue
         A(f"| {r['year']} | {ver:,} | {r['dead']:,} | {r['dormant']:,} | "
-          f"{r['slowing']:,} | {r['active']:,} | "
+          f"{r['slowing']:,} | {r['active']:,} | {r.get('unavailable', 0):,} | "
           f"{r['dead_pct_verified']}% | {r['not_maintained_pct_verified']}% |")
+    A("")
+    A("「受限」= HTTP 451（法律原因不可用）或 403（仓库因 ToS/DMCA 被封禁）。"
+      "这类仓库仍然存在，既不算死也不算活，已排除在已死占比与不再维护占比的分母之外。")
     A("")
 
     A("**表 2.3　中置信层（域名信号）已核验子集**")

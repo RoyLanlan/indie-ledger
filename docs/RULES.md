@@ -216,6 +216,40 @@ Fix: `dead_pct_verified` and `not_maintained_pct_verified` use the verified
 subset as denominator (unverified rows never enter a rate); rates below 1%
 render with one decimal.
 
+### P13 — A failed request is never evidence of death (2026-11-09)
+Incident: `api()` returned `None` both for a genuine 404 and for a request
+that exhausted its retries against a rate limit. `classify_repo(None)` then
+classified every one of those as `dead`. Measured contamination: of 25
+sampled "404 deleted" rows, 3 repos were alive and pushing — about 12% false
+death rate. Fix: `api()` raises `RateLimitError` when retries are exhausted
+and returns `None` **only** on a real 404. Callers catch the exception, write
+no verdict, and leave the repo queued for the next pass. Regression test:
+`test_false_deaths.py`.
+
+### P14 — HTTP 451 is not a 404 (2026-11-09)
+Incident: `Anil-matcha/Free-GPT-Actions` returns HTTP 451 (repo blocked for
+legal reasons). A 451 repo still exists; it is not deleted. Fix: distinct
+verdict `unavailable`, excluded from both the alive and dead numerators and
+from the rate denominator.
+
+### P15 — A secondary rate limit does not consume core quota (2026-11-09)
+Incident: the sampler stopped making progress while the quota readout stayed
+at 4128/5000. Cause: GitHub's abuse detection returns 403 **without**
+spending core quota, so a sampler that polls the quota to decide whether to
+sleep waits forever while its own burst pattern keeps it blocked. Fix:
+distinguish `SecondaryRateLimit` from quota exhaustion by reading the
+response body, back off long (300s), and raise the inter-request delay to
+0.35s. Rule: never infer "I am throttled" from the quota counter alone.
+
+### P16 — HTTP 403 has three unrelated meanings (2026-11-09)
+Incident: `PublicAffairs/openai-github-copilot` (ToS block) and
+`halpz/re3` (DMCA block) both return 403. The sampler classified any 403 as
+a rate limit, slept 90s per repo, and eventually wrote a false death. Fix:
+`_classify_403()` reads the body and returns `quota` / `secondary` /
+`blocked` / `unknown`. A `blocked` repo raises immediately with no retry and
+is recorded as verdict `blocked` — still excluded from the rate denominator,
+same as `unavailable`. Rule: never map a non-404 error to a death verdict.
+
 ---
 
 ## 7. Pipeline contract
