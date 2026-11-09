@@ -213,10 +213,37 @@ def stage_status():
     return 0
 
 
+def stage_audit():
+    """Re-verify the `dead` bucket against the live GitHub API.
+
+    P22: unit tests cannot catch a mis-specified verdict, because the test
+    asserts whatever the code does. Only asking GitHub whether the repo is
+    really gone can. P21: the audit fails when most lookups are
+    inconclusive, because a rate computed over a mostly-failed sample
+    proves nothing.
+    """
+    if not os.path.exists(TOKEN_FILE):
+        print("audit: no PAT -- skipped")
+        return 0
+    cmd = [sys.executable, os.path.join(HERE, "audit_deaths.py"),
+           "--sample", "30", "--threshold", "5"]
+    print("audit: re-verifying the dead bucket against the live API")
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+        print(r.stdout[-1500:])
+        if r.stderr:
+            print(r.stderr[-500:])
+        return r.returncode
+    except subprocess.TimeoutExpired:
+        print("audit: timed out")
+        return 0
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--stage", required=True,
-                    choices=["collect", "verify", "report", "push", "all", "status"])
+                    choices=["collect", "verify", "report", "audit", "push",
+                             "all", "status"])
     args = ap.parse_args()
 
     if args.stage == "status":
@@ -226,10 +253,11 @@ def main():
         "collect": ("collect", stage_collect),
         "verify": ("verify", stage_verify),
         "report": ("report", stage_report),
+        "audit": ("audit", stage_audit),
         "push": ("push", stage_push),
     }
-    order = (["collect", "verify", "report", "push"] if args.stage == "all"
-             else [args.stage])
+    order = (["collect", "verify", "report", "audit", "push"]
+             if args.stage == "all" else [args.stage])
 
     rc = 0
     for s in order:

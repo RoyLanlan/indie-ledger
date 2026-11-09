@@ -303,6 +303,26 @@ toward "dead". **Only a genuine 404 means the repo is gone.** This matches the
 project's own rule that `archived`, long-no-push and deletion must stay
 separate. Effect on the published rate: death 8% -> 4%, not-maintained 69%.
 
+### P21 — An audit with no signal must not report PASS (2026-11-09)
+Incident: `audit_deaths.py` ran mid-token-rotation. 24 of 30 lookups returned
+HTTP 401 (invalid credentials) and were counted as "inconclusive", but the
+script still printed `PASS: false-death rate 0.0%` — a pass computed over the
+6 rows that happened to succeed. A broken audit that reports success is
+worse than no audit, because it silences the alarm. Fix: the audit fails when
+the inconclusive share exceeds a limit (default 20%), on the grounds that a
+false-death rate measured over a mostly-failed sample proves nothing. The
+same rule applies to any periodic health check: **report the coverage of the
+check alongside its result.**
+
+### P22 — Audit the death verdict against the live API, not against tests (2026-11-09)
+Incident: the archived-vs-dead bug (P20) survived the whole unit-test suite,
+because the test asserted the buggy behaviour ("archived is dead"). Only
+re-checking real `dead` rows against the live API exposed it: 100 of 207 were
+archived repos. Fix: `audit_deaths.py` samples the `dead` bucket, asks
+GitHub for each repo, and reports the share that is not actually a 404. A
+death verdict is valid only if the API says 404. Measured after the P20 fix:
+24 of 25 sampled rows confirmed 404, 1 leftover archived row repaired.
+
 ---
 
 ## 7. Pipeline contract
