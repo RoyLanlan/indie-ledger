@@ -463,6 +463,39 @@ class TestCategorizerAudit(unittest.TestCase):
         self.assertIn(r[0], valid)
 
 
+class TestAuditGuards(unittest.TestCase):
+    """P29: an audit must refuse to report a rate it cannot support.
+
+    A stale run reported 'PASS: false-death rate 0.0%' while 24 of 30
+    lookups had failed with 401. The 0.0% was computed over 6 conclusive
+    rows - too few to detect the 5% rate the audit is supposed to catch.
+    """
+
+    def test_audit_passes_the_min_conclusive_count_to_the_script(self):
+        import subprocess, sys, os
+        out = subprocess.run(
+            [sys.executable, "audit_deaths.py", "--help"],
+            capture_output=True, text=True, timeout=60).stdout
+        self.assertIn("--min-conclusive", out)
+
+    def test_min_conclusive_default_is_reasonable(self):
+        import subprocess, sys
+        out = subprocess.run(
+            [sys.executable, "audit_deaths.py", "--help"],
+            capture_output=True, text=True, timeout=60).stdout
+        self.assertIn("minimum number of conclusive lookups", out)
+
+    def test_pass_line_always_reports_the_conclusive_count(self):
+        """The PASS line must state how many rows backed it, so a rate
+        computed over a handful of rows cannot hide."""
+        src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "audit_deaths.py")).read()
+        self.assertIn("conclusive", src)
+        # The PASS branch must mention the conclusive count.
+        idx = src.index('"\\nPASS: false-death rate')
+        self.assertIn("conclusive}", src[idx:idx + 300])
+
+
 class TestTokenBinding(unittest.TestCase):
     """P27: `--pat-file` was silently ignored.
 

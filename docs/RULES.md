@@ -387,6 +387,19 @@ the audit now aborts on the first 401, reports that it has no signal, and
 changes nothing on disk. Rule: an audit that cannot authenticate has no
 result, and a result it cannot produce is not a PASS.
 
+### P29 — A rate needs enough observations behind it (2026-11-09)
+Incident: a stale audit run reported `PASS: false-death rate 0.0%
+(threshold 5.0%)` while 24 of its 30 lookups had failed with 401. The
+0.0% was computed over the 6 rows that did come back conclusive - far too
+few to detect the 5% rate the audit exists to catch. (The run itself
+executed a pre-P21 copy of the script, so this was a reporting failure
+rather than a live one, but the guard was missing all the same.) Fix: the
+audit now refuses to report a rate at all unless it has at least
+`--min-conclusive` (default 20) conclusive lookups, and the PASS line
+always prints how many rows the rate was computed over. Rule: a percentage
+over a handful of observations is not a measurement, and a tool that
+publishes one must be made to say how many observations it had.
+
 ---
 
 ## 7. Pipeline contract

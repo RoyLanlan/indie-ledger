@@ -73,6 +73,9 @@ def main():
                     help="max acceptable false-death rate, percent")
     ap.add_argument("--max-inconclusive", type=float, default=20.0,
                     help="max acceptable share of inconclusive lookups, percent")
+    ap.add_argument("--min-conclusive", type=int, default=20,
+                    help="minimum number of conclusive lookups for the audit "
+                         "to be able to report a result at all")
     ap.add_argument("--apply", action="store_true",
                     help="relabel rows that are not really dead")
     ap.add_argument("--seed", type=int, default=0)
@@ -190,12 +193,26 @@ def main():
               f"so its {false_rate:.1f}% false-death rate proves nothing")
         return 1
 
+    # P29: a percentage is only meaningful over enough observations.
+    # "0 false deaths out of 6 conclusive lookups" is a 0.0% rate that
+    # says nothing - the sample was too small to detect a 5% rate. The
+    # audit must refuse to report a rate it cannot support.
+    conclusive = real_dead + len(false_dead)
+    if conclusive < args.min_conclusive:
+        print(f"\nFAIL: only {conclusive} conclusive lookups "
+              f"(minimum {args.min_conclusive}). "
+              f"A {false_rate:.1f}% false-death rate over {conclusive} rows "
+              f"cannot detect a {args.threshold:.1f}% rate - the sample is "
+              f"too small for the result to mean anything.")
+        return 1
+
     if false_rate > args.threshold:
         print(f"\nFAIL: false-death rate {false_rate:.1f}% exceeds "
               f"threshold {args.threshold:.1f}%")
         return 1
     print(f"\nPASS: false-death rate {false_rate:.1f}% "
-          f"(threshold {args.threshold:.1f}%), {inconclusive_rate:.1f}% inconclusive")
+          f"(threshold {args.threshold:.1f}%), {inconclusive_rate:.1f}% inconclusive"
+          f", {conclusive}/{n} conclusive")
     return 0
 
 
