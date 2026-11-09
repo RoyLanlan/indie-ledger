@@ -102,16 +102,28 @@ def cohort_table(products, min_n=MIN_N):
         unv = vc["unverified"]
         alive_site = vc["alive"]
         degraded = vc["degraded"]
-        # `unavailable` (HTTP 451, legal takedown) and `blocked` (HTTP 403,
-        # per-repo ToS/DMCA takedown) are neither alive nor dead. They are
-        # excluded from both numerators and from the rate denominator.
-        unavailable = vc["unavailable"] + vc["blocked"]
+        # Tier-specific semantics for the two "restricted" verdicts:
+        #
+        #   domain tier  `blocked` = the site answered 403/405/429. That is a
+        #                sign the site is UP and refusing bots -> count it as
+        #                alive, and keep it in the denominator.
+        #   repo tier    `repo_blocked` = the repository itself was taken down
+        #                for ToS/DMCA reasons. It still exists, so it is
+        #                neither alive nor dead -> exclude it from the
+        #                denominator entirely (same as `unavailable`).
+        #
+        # The two must never share a name: collapsing them would silently
+        # drop live sites out of the denominator (P17).
+        site_blocked = vc["blocked"]
+        alive_site += site_blocked
+        unavailable = vc["unavailable"] + vc["repo_blocked"]
         verified = n - unv - unavailable
         row = {
             "year": y, "n": n,
             "dead": dead, "dormant": dormant, "active": alive,
             "slowing": slowing, "unverified": unv,
             "alive_site": alive_site,
+            "site_blocked": site_blocked,
             "degraded": degraded,
             "unavailable": unavailable,
             "verified": verified,

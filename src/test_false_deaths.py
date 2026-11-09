@@ -136,14 +136,40 @@ class TestApiErrorSemantics(unittest.TestCase):
     def test_blocked_never_counted_as_dead(self):
         from analyze import cohort_table
         products = [
-            {"launch_day": "2024-01-01", "verdict": "blocked"},
+            {"launch_day": "2024-01-01", "verdict": "repo_blocked"},
             {"launch_day": "2024-01-01", "verdict": "unavailable"},
             {"launch_day": "2024-01-01", "verdict": "active"},
         ]
         row = cohort_table(products)[0]
         self.assertEqual(row["dead"], 0)
-        self.assertEqual(row["unavailable"], 2)   # blocked + unavailable
+        self.assertEqual(row["unavailable"], 2)   # repo_blocked + unavailable
         self.assertEqual(row["verified"], 1)      # only `active` counts
+
+    def test_domain_blocked_counts_as_alive(self):
+        """P17: domain-tier `blocked` means the site is UP and refusing bots.
+
+        It must stay in the denominator and count as alive. Only the
+        repo-tier `repo_blocked` is excluded.
+        """
+        from analyze import cohort_table
+        products = [
+            {"launch_day": "2024-01-01", "verdict": "blocked"},
+            {"launch_day": "2024-01-01", "verdict": "alive"},
+            {"launch_day": "2024-01-01", "verdict": "dead"},
+        ]
+        row = cohort_table(products)[0]
+        self.assertEqual(row["alive_site"], 2, "blocked site is alive")
+        self.assertEqual(row["unavailable"], 0, "not excluded")
+        self.assertEqual(row["verified"], 3, "all three stay in denominator")
+        self.assertEqual(row["dead_pct_verified"], 33)
+
+    def test_two_tiers_do_not_share_a_verdict_name(self):
+        """The repo tier must not emit the bare name `blocked`."""
+        import github_sampler as gs
+        import inspect
+        src = inspect.getsource(gs)
+        self.assertIn('"verdict": "repo_blocked"', src)
+        self.assertNotIn('"verdict": "blocked"', src)
 
 
 class TestVerdictSemantics(unittest.TestCase):

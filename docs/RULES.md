@@ -69,6 +69,13 @@ For each repo in the ledger:
 | `pushed_at` older than 365 days | **dormant** |
 | `pushed_at` 180–365 days | **slowing** |
 | `pushed_at` within 180 days | **active** |
+| → 451 | **unavailable** — blocked for legal reasons; repo still exists |
+| → 403 "Repository access blocked" | **repo_blocked** — ToS/DMCA takedown; repo still exists |
+| → 403 / 429 quota, or abuse throttle | *no verdict* — retry later, never a death |
+
+`unavailable` and `repo_blocked` are excluded from both the alive and the dead
+numerators and from the rate denominator. **Only a genuine 404 (or an explicit
+`archived`) is a death.** See P13–P17.
 
 Measured on the 2024-03 cohort, 2.7 years later (n=40):
 
@@ -247,8 +254,20 @@ Incident: `PublicAffairs/openai-github-copilot` (ToS block) and
 a rate limit, slept 90s per repo, and eventually wrote a false death. Fix:
 `_classify_403()` reads the body and returns `quota` / `secondary` /
 `blocked` / `unknown`. A `blocked` repo raises immediately with no retry and
-is recorded as verdict `blocked` — still excluded from the rate denominator,
+is recorded as verdict `repo_blocked` (see P17) — still excluded from the rate
+denominator,
 same as `unavailable`. Rule: never map a non-404 error to a death verdict.
+
+### P17 — Two tiers must never share a verdict name (2026-11-09)
+Incident: the GitHub tier started emitting a verdict called `blocked` for
+repositories taken down for ToS/DMCA reasons. The domain tier already used
+`blocked` for "the site answered 403/405/429" — which means the site is
+**alive** and merely refusing bots. Collapsing the two names put live sites
+into the "unavailable" bucket and silently dropped them out of the
+denominator. Fix: the repo tier emits `repo_blocked`; the domain tier keeps
+`blocked` and counts it as alive. Rule: a verdict name has one meaning across
+the whole ledger — when two layers need the same word for different things,
+rename one of them.
 
 ---
 

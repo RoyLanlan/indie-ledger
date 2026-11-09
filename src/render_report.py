@@ -112,20 +112,24 @@ def render(products, cohorts, meta):
           f"{r['slowing']:,} | {r['active']:,} | {r.get('unavailable', 0):,} | "
           f"{r['dead_pct_verified']}% | {r['not_maintained_pct_verified']}% |")
     A("")
-    A("「受限」= HTTP 451（法律原因不可用）或 403（仓库因 ToS/DMCA 被封禁）。"
+    A("「受限」= HTTP 451（法律原因不可用）或仓库因 ToS/DMCA 被封禁（HTTP 403）。"
       "这类仓库仍然存在，既不算死也不算活，已排除在已死占比与不再维护占比的分母之外。")
     A("")
 
     A("**表 2.3　中置信层（域名信号）已核验子集**")
     A("")
-    A("| 上线年份 | 已核验 | 站点死 | 站点存活 | 主机异常 | 已死占比 |")
-    A("|---|---|---|---|---|---|")
+    A("| 上线年份 | 已核验 | 站点死 | 站点存活 | 拒爬(403等) | 主机异常 | 已死占比 |")
+    A("|---|---|---|---|---|---|---|")
     for r in meta["cohorts_medium"]:
         ver = r["n"] - r["unverified"]
         if ver < MIN_N:
             continue
         A(f"| {r['year']} | {ver:,} | {r['dead']:,} | {r['alive_site']:,} | "
-          f"{r.get('degraded', 0):,} | {r['dead_pct_verified']}% |")
+          f"{r.get('site_blocked', 0):,} | {r.get('degraded', 0):,} | "
+          f"{r['dead_pct_verified']}% |")
+    A("")
+    A("「拒爬」= 站点返回 403/405/429。这说明**站点还活着**，只是拒绝自动请求，"
+      "因此计入「站点存活」，**不算死亡**。")
     A("")
     A("**读法**：纵向读队列，不要横向比年份——今年刚上线的产品还没来得及死。"
       "已死占比只在已核验子集内计算，未核验的按原样列出不参与分母。"

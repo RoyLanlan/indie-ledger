@@ -140,9 +140,11 @@ def main():
             except BlockedRepo:
                 # 403 "Repository access blocked" - a per-repo ToS/DMCA block.
                 # The repo still exists. It is not dead and it is not alive.
-                # Record it as its own verdict and move on immediately; do not
-                # sleep, because this says nothing about our request rate.
-                ev = {"verdict": "blocked",
+                # Verdict is `repo_blocked`, NOT `blocked`: in the domain tier
+                # `blocked` means "site answers 403/405/429", which is a sign
+                # the site is ALIVE. Collapsing the two names would quietly
+                # drop live sites out of the denominator.
+                ev = {"verdict": "repo_blocked",
                       "reason": "HTTP 403 (repo access blocked, ToS/DMCA)",
                       "survival_days": None}
                 rec = {"repo": repo, "launch_day": repo_launch[repo], **ev,
