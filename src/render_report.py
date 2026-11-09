@@ -226,6 +226,34 @@ def render(products, cohorts, meta):
       f"分类精度经 {meta.get('cat_n', 0)} 条人工标注样本实测为 "
       f"**{meta.get('cat_precision', 0)}%**，"
       f"全库覆盖率 {meta.get('cat_coverage', 0)}%。")
+    bands = meta.get("cat_bands") or []
+    # The band meanings live in category_audit.json in English (the JSON is
+    # a machine-facing artifact); the report is the reader-facing one, so
+    # the Chinese labels are applied here.
+    BAND_CN = {
+        "weak (1-2)": ("弱标签", "仅靠单个低权重关键词命中"),
+        "mid (3-5)": ("中标签", "中等强度关键词命中"),
+        "strong (6+)": ("强标签", "多个强关键词命中"),
+    }
+    for b in bands:
+        cn = BAND_CN.get(b["band"])
+        if cn:
+            b["band"] = cn[0]
+            b["meaning"] = cn[1]
+    if bands:
+        A("")
+        A("**表 5.0　分类精度按标签强度分层**（标签强度 = 命中关键词权重之和）")
+        A("")
+        A("| 标签强度 | 含义 | 人工样本 | 精度 |")
+        A("|---|---|---|---|")
+        for b in bands:
+            A(f"| {b['band']} | {b['meaning']} | {b['hits']}/{b['n']} | "
+              f"{b['precision']}% |")
+        A("")
+        A("> 弱标签层（仅靠单个低权重关键词命中）的精度明显低于其余两层。"
+          "本报告的行业比率按**全部标签**计算，"
+          "因此一个赛道的真实精度取决于它的标签构成，"
+          "弱标签占比高的赛道其比率应视为**下限估计**。")
     A("")
     A("**表 5.1　高置信层（GitHub 核验）赛道存活率**")
     A("")
@@ -469,6 +497,17 @@ def main():
             cat_n = aud.get("n", 0)
             cat_precision = round(aud.get("precision", 0) * 100, 1)
             cat_coverage = round(aud.get("coverage", 0) * 100, 1)
+            meanings = aud.get("band_definition", {})
+            cat_bands = [
+                {
+                    "band": band,
+                    "meaning": meanings.get(band, ""),
+                    "hits": v.get("hits", 0),
+                    "n": v.get("n", 0),
+                    "precision": round(v.get("precision", 0) * 100, 1),
+                }
+                for band, v in (aud.get("precision_by_band") or {}).items()
+            ]
         except Exception:
             pass
 
@@ -514,6 +553,7 @@ def main():
         "cat_n": cat_n,
         "cat_precision": cat_precision,
         "cat_coverage": cat_coverage,
+        "cat_bands": cat_bands,
         "evidence_sample": ev_sample,
         "rules_version": "2026-11-09",
         "ledger_path": "data/ledger.jsonl",

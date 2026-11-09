@@ -496,6 +496,52 @@ class TestAuditGuards(unittest.TestCase):
         self.assertIn("conclusive}", src[idx:idx + 300])
 
 
+class TestBinomialTail(unittest.TestCase):
+    """The exact binomial tail must survive large n.
+
+    The naive sum uses math.comb(n, k), which returns an exact int that
+    overflows float conversion once n reaches the thousands. That killed
+    the whole report stage with OverflowError - and because the renderer
+    writes its output only at the end, the previously generated report
+    stayed on disk unchanged, so the failure looked like "no new data"
+    rather than "the stage crashed".
+    """
+
+    def _tail(self, n, k, p):
+        import sys, os
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from analyze import _binom_tail
+        return _binom_tail(n, k, p)
+
+    def test_matches_exact_integer_method_on_small_n(self):
+        import math
+        n, k, p = 40, 10, 0.048
+        exact = sum(math.comb(n, i) * p ** i * (1 - p) ** (n - i)
+                    for i in range(k, n + 1))
+        got = self._tail(n, k, p)
+        self.assertAlmostEqual(got, exact, delta=exact * 1e-9)
+
+    def test_does_not_overflow_on_large_n(self):
+        # This combination raised OverflowError with math.comb().
+        for n in (2000, 4000):
+            got = self._tail(n, 50, 0.048)
+            self.assertGreaterEqual(got, 0.0)
+            self.assertLessEqual(got, 1.0)
+
+    def test_tail_is_a_probability(self):
+        for n in (10, 100, 3000):
+            for k in (0, 1, 5):
+                got = self._tail(n, k, 0.048)
+                self.assertGreaterEqual(got, 0.0)
+                self.assertLessEqual(got, 1.0)
+
+    def test_degenerate_cases(self):
+        self.assertEqual(self._tail(10, 0, 0.5), 1.0)
+        self.assertEqual(self._tail(10, 11, 0.5), 0.0)
+        self.assertEqual(self._tail(10, 5, 0.0), 0.0)
+        self.assertEqual(self._tail(10, 5, 1.0), 1.0)
+
+
 class TestTokenBinding(unittest.TestCase):
     """P27: `--pat-file` was silently ignored.
 

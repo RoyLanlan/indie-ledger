@@ -183,12 +183,51 @@ def stage_report():
     if r.returncode != 0:
         print("report: analyze FAILED:", r.stderr[-1000:])
         return 1
+    # P31: capture the report's mtime and size BEFORE rendering. The
+    # renderer writes its output only at the very end, so a crash leaves
+    # the previous report in place, unchanged - which is
+    # indistinguishable from "regenerated and nothing changed". After
+    # the render we check the file was actually touched.
+    rep_dir_src = os.path.join(HERE, "reports")
+    before = {}
+    if os.path.isdir(rep_dir_src):
+        for f in os.listdir(rep_dir_src):
+            pth = os.path.join(rep_dir_src, f)
+            try:
+                st = os.stat(pth)
+                before[f] = (st.st_mtime_ns, st.st_size)
+            except OSError:
+                pass
+
     r = subprocess.run([sys.executable, os.path.join(HERE, "render_report.py")],
                        capture_output=True, text=True, timeout=1800)
     print(r.stdout[-1500:])
     if r.returncode != 0:
         print("report: render FAILED:", r.stderr[-1000:])
+        print("report: NOTE - the previous report file is still on disk. "
+              "Its presence does NOT mean this stage succeeded; the render "
+              "died before writing. Do not publish it as current.")
         return 1
+
+    # Verify the output was actually rewritten (new mtime or new size).
+    after = {}
+    if os.path.isdir(rep_dir_src):
+        for f in os.listdir(rep_dir_src):
+            pth = os.path.join(rep_dir_src, f)
+            try:
+                st = os.stat(pth)
+                after[f] = (st.st_mtime_ns, st.st_size)
+            except OSError:
+                pass
+    unchanged = [f for f in after
+                 if f in before and before[f] == after[f]]
+    if unchanged:
+        print(f"report: WARNING - these report files were NOT rewritten "
+              f"(same mtime and size): {unchanged}. The render may have "
+              f"produced identical content, or the stage may have skipped "
+              f"the write.")
+    else:
+        print("report: all report files were rewritten (mtime/size changed)")
 
     # publish into the repo working tree
     out = os.path.join(REPO, "data")

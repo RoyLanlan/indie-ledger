@@ -400,6 +400,63 @@ always prints how many rows the rate was computed over. Rule: a percentage
 over a handful of observations is not a measurement, and a tool that
 publishes one must be made to say how many observations it had.
 
+### P30 — An aggregate accuracy hides WHERE the errors are (2026-11-09)
+The category audit reported a single number: `precision 83.3% (n=120)`.
+But the errors are not spread evenly. Measured on the same hand-labelled
+sample, precision by label strength is:
+
+| label strength | meaning | sample | precision |
+|---|---|---|---|
+| weak (1-2) | one low-weight keyword hit | 51 | 76.5% |
+| mid (3-5) | mid-strength keyword hits | 46 | 87.0% |
+| strong (6+) | several strong keyword hits | 23 | 91.3% |
+
+61.3% of the corpus is weak-labelled, so most of the corpus sits in the
+least reliable band, and the aggregate says nothing about it. Fix: the
+audit now prints and stores the band breakdown, and the report shows it as
+table 5.0 with an explicit note that a vertical's true precision depends
+on its label composition, so a rate for a weak-label-heavy vertical is a
+**lower bound**. Rule: an accuracy figure must be reported with the
+breakdown of the cases it aggregates over; a single mean over a
+heterogeneous population is not usable on its own.
+
+Also fixed in the same pass, from a manual read of the ten dead
+`commerce_fintech` rows behind the report's one significant finding:
+three of them were not commerce at all - "GitHub App to Streamline
+Software Delivery" is developer tooling, "Interactive Delivery Zone
+Geolocation" is logistics, "CxReports - Automate Delivery" is reporting.
+The keyword `delivery` was doing the damage. Same class of fault for
+`calculator`, `token`, `extract` and `graph`: each was a generic English
+word that matched a vertical but described something else. They were
+replaced with specific phrases (`food delivery`, `compound interest`,
+`crypto token`, `llm extract`, `graph database`, ...). That moved 527 of
+88,874 rows (0.6%) to a correct label or to `other`.
+
+Note the honest result: overall precision stayed at 83.3%. The fixes
+corrected *semantics* that the 120-row sample was too small to detect.
+That is a real improvement and also a measurement that the sample cannot
+see - which is why the sample size itself is a tracked limitation.
+
+### P31 — A crashed stage must not look like an unchanged stage (2026-11-09)
+The report stage died with `OverflowError: int too large to convert to
+float`, thrown from the exact binomial tail: `math.comb(n, k)` returns an
+exact int that cannot be converted to float once n reaches the
+thousands. The renderer writes its output only at the very end, so the
+crash left the **previous** report on disk, unchanged, at the same byte
+count. Read casually, that looks exactly like "the report regenerated and
+nothing changed" - which is how it was first mistaken for a no-op.
+
+Two rules follow. First, the arithmetic must not overflow: the tail is
+now computed in the log-gamma form (`lgamma(n+1) - lgamma(k+1) -
+lgamma(n-k+1)`), cross-checked against the exact integer method on
+small n (relative error < 1e-13) and verified not to raise on n up to
+4000. Second, and independent of the arithmetic: **a stage that fails
+must be distinguishable from a stage that produced no change.** A
+regeneration should verify that the output file was actually rewritten,
+not merely that it exists and looks plausible. A crash that leaves
+stale output in place is worse than a crash that leaves nothing, because
+it converts a visible failure into an invisible one.
+
 ---
 
 ## 7. Pipeline contract

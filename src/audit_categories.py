@@ -256,6 +256,30 @@ def main():
           f"({other_hit/other_n*100:.1f}%)")
     print(f"overall precision       : {precision:.1f}%")
 
+    # P30: the aggregate precision hides WHERE the errors are. A label
+    # resting on a single low-weight keyword hit is measurably less
+    # reliable than one resting on several. Any report that cites the
+    # aggregate must also state the band breakdown, otherwise a reader
+    # cannot tell how much of the corpus is only weakly labelled.
+    print()
+    print("=== precision by label strength (score = sum of matched keyword weights) ===")
+    bands = {"weak (1-2)": [0, 0], "mid (3-5)": [0, 0], "strong (6+)": [0, 0]}
+    for s in scored:
+        sc = s.get("score", 0) or 0
+        band = ("weak (1-2)" if sc <= 2
+                else "mid (3-5)" if sc <= 5 else "strong (6+)")
+        bands[band][1] += 1
+        if s.get("ok"):
+            bands[band][0] += 1
+    for band in ("weak (1-2)", "mid (3-5)", "strong (6+)"):
+        h, t = bands[band]
+        if t:
+            print(f"  {band:14s} {h:>3}/{t:<3} {h/t*100:5.1f}%")
+    weak_h, weak_t = bands["weak (1-2)"]
+    if weak_t and weak_h / weak_t < args.threshold:
+        print(f"  note: the weak band alone is below the {args.threshold:.0f}% "
+              f"threshold - do not quote a rate for rows in that band")
+
     # Coverage over the whole corpus, independent of the sample.
     cats = Counter()
     for r in rows:
@@ -296,6 +320,15 @@ def main():
             "corpus": total,
             "threshold": args.threshold,
             "pass": precision >= args.threshold,
+            "precision_by_band": {
+                band: {"hits": h, "n": t, "precision": h / t if t else 0}
+                for band, (h, t) in bands.items() if t
+            },
+            "band_definition": {
+                "weak (1-2)": "one low-weight keyword hit",
+                "mid (3-5)": "mid-strength keyword hits",
+                "strong (6+)": "several strong keyword hits",
+            },
         }, f, ensure_ascii=False, indent=1)
     print(f"wrote audit result -> {audit_out}")
 

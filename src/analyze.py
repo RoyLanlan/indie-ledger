@@ -19,6 +19,38 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 MIN_N = 30  # red line: never publish a cohort smaller than this
 
 
+def _binom_tail(n, k, p):
+    """Exact one-sided binomial tail P(X >= k | n, p), without overflow.
+
+    math.comb(n, k) is an exact int, but converting it to float overflows
+    once n reaches the thousands - the naive sum then raises
+    OverflowError and the whole report stage dies. This uses the
+    log-gamma form instead:
+
+        log C(n,k) = lgamma(n+1) - lgamma(k+1) - lgamma(n-k+1)
+
+    and exponentiates each term. Same value, no overflow. The terms are
+    summed from k upward; for a small tail the largest term is the
+    first one, so the sum is well conditioned.
+    """
+    if k <= 0:
+        return 1.0
+    if k > n:
+        return 0.0
+    if p <= 0.0:
+        return 0.0
+    if p >= 1.0:
+        return 1.0
+    log_p = math.log(p)
+    log_q = math.log(1.0 - p)
+    total = 0.0
+    for i in range(k, n + 1):
+        log_c = (math.lgamma(n + 1) - math.lgamma(i + 1)
+                 - math.lgamma(n - i + 1))
+        total += math.exp(log_c + i * log_p + (n - i) * log_q)
+    return min(total, 1.0)
+
+
 def load(path):
     if not os.path.exists(path):
         return []
@@ -285,9 +317,12 @@ def vertical_significance(products, tier="high", year=None, min_n=MIN_N):
         if ver < min_n or dead == 0:
             continue
         p_hat = dead / ver
-        # Exact one-sided binomial tail: P(X >= dead | n=ver, p=base_p)
-        tail = sum(math.comb(ver, i) * base_p ** i * (1 - base_p) ** (ver - i)
-                   for i in range(dead, ver + 1))
+        # Exact one-sided binomial tail: P(X >= dead | n=ver, p=base_p).
+        # math.comb() returns an exact int that overflows float
+        # conversion once n is in the thousands, so the log-gamma form
+        # is used instead: log C(n,k) + k*log(p) + (n-k)*log(1-p),
+        # exponentiated term by term. Same number, no overflow.
+        tail = _binom_tail(ver, dead, base_p)
         out.append({
             "category": cat,
             "verified": ver,
