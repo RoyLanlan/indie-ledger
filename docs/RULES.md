@@ -482,6 +482,20 @@ Rule: a p-value means nothing without knowing how many hypotheses were
 tested. If the number of tests is not stated alongside the p-value, the
 p-value is not a result - it is a coincidence waiting to be published.
 
+### P33 — A status line in a report must come from the data (2026-11-09)
+The report carried this sentence as a hardcoded string: *"2024 and 2025
+are 100% verified, 2026 has not started"*. When the domain scan
+finished, 2026 was in fact at 61% verified - and the sentence still said
+nothing had been checked for it. The report was wrong in the exact place
+where a reader looks to decide how much to trust the numbers next to it.
+
+Fix: the sentence is now computed from the same cohort rows the tables
+are built from, and it distinguishes three states - fully verified,
+partially verified (stating the rate), and not started. Rule: in a
+document that regenerates on a schedule, any statement about the
+*current* state must be derived at render time. A hardcoded status line
+is a lie waiting for the data to move.
+
 ---
 
 ## 7. Pipeline contract

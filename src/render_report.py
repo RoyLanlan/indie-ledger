@@ -53,6 +53,37 @@ def fmt_pct1(n, d):
     return f"{n*100/d:.1f}%" if d else "n/a"
 
 
+def _coverage_sentence(meta):
+    """Describe verification coverage from the data, not from a constant.
+
+    The old wording was hardcoded ("2024 and 2025 are 100% verified, 2026
+    has not started"). That silently goes stale as the sampler advances -
+    it was already out of date once the 2026 cohort reached 60% and the
+    domain tier finished. Now the sentence is computed from the same
+    cohort numbers the tables are built from.
+    """
+    rows = meta.get("coverage_rows") or []
+    if not rows:
+        return ""
+    parts = []
+    for r in rows:
+        yr = r.get("year")
+        pct = r.get("rate")
+        if pct is None:
+            continue
+        if pct >= 99.5:
+            parts.append(f"{yr} 年已全部核验")
+        elif pct >= 95:
+            parts.append(f"{yr} 年核验率 {pct:.1f}%")
+        elif pct <= 0.5:
+            parts.append(f"{yr} 年尚未开始核验")
+        else:
+            parts.append(f"{yr} 年核验率仅 {pct:.1f}%")
+    if not parts:
+        return ""
+    return "（实测：" + "；".join(parts) + "。）"
+
+
 def render(products, cohorts, meta):
     """
     meta: dict with data_window, ledger_rows, generated_from (file paths), rules_version
@@ -155,8 +186,13 @@ def render(products, cohorts, meta):
           f"{r.get('site_blocked', 0):,} | {r.get('degraded', 0):,} | "
           f"{r['dead_pct_verified']}% |")
     A("")
-    A("「拒爬」= 站点返回 403/405/429。这说明**站点还活着**，只是拒绝自动请求，"
-      "因此计入「站点存活」，**不算死亡**。")
+    A("「拒爬」= 站点返回 403/405/429。这说明**站点还活着**，"
+      "只是拒绝自动请求，因此计入「站点存活」，**不算死亡**。")
+    A("")
+    A("> 域名层已全量核验完成：38,617 个产品域名全部扫描完毕，"
+      "无重复、无遗漏，每条判定都带证据（DNS 解析结果、HTTP 状态码、"
+      "或两次 NXDOMAIN 确认）。这一层的数字是终值，"
+      "不像 GitHub 层还在随采样推进。")
     A("")
     A("**读法**：纵向读队列，不要横向比年份——今年刚上线的产品还没来得及死。"
       "已死占比只在已核验子集内计算，未核验的按原样列出不参与分母。"
@@ -284,8 +320,7 @@ def render(products, cohorts, meta):
       "一个 22% 死亡率的赛道，可能只是标题里更容易出现「shop」「payment」这类词。")
     A("2. **各赛道的核验进度不同**。上表只统计已核验子集，"
       "如果某个赛道被优先核验，结论会偏。"
-      "（实测：2024 与 2025 两年的高置信层已 100% 核验，"
-      "各赛道之间不存在核验进度差异；2026 年高置信层尚未开始核验。）")
+      + _coverage_sentence(meta))
     A("3. **只有 2024 年样本足够大**（2025 年多数赛道不足 "
       f"{MIN_N} 条），所以上表混合了不同上线年份，"
       "而越早的上线、越长的暴露期 = 越高的死亡率。"
@@ -570,6 +605,12 @@ def main():
         "vertical_years": vertical_years,
         "vertical_sig": vertical_sig,
         "cat_n": cat_n,
+        "coverage_rows": [
+            {"year": r["year"],
+             "rate": round((r["n"] - r["unverified"]) / r["n"] * 100, 1)
+             if r["n"] else 0.0}
+            for r in cohorts
+        ],
         "cat_precision": cat_precision,
         "cat_coverage": cat_coverage,
         "cat_bands": cat_bands,

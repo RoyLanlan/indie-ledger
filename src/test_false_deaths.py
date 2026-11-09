@@ -496,6 +496,41 @@ class TestAuditGuards(unittest.TestCase):
         self.assertIn("conclusive}", src[idx:idx + 300])
 
 
+class TestCoverageSentence(unittest.TestCase):
+    """The verification-coverage note must come from the data.
+
+    It used to be a hardcoded string: "2024 and 2025 are 100% verified,
+    2026 has not started". That went stale as the sampler advanced - by
+    the time the domain tier finished, 2026 was at 61% and the sentence
+    still claimed nothing had been verified for it. A hardcoded status
+    line in a report that regenerates weekly is a defect waiting to
+    happen.
+    """
+
+    def _sent(self, rows):
+        import sys, os
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from render_report import _coverage_sentence
+        return _coverage_sentence({"coverage_rows": rows})
+
+    def test_full_coverage_is_stated_as_complete(self):
+        s = self._sent([{"year": 2024, "rate": 100.0}])
+        self.assertIn("2024", s)
+        self.assertIn("已全部核验", s)
+
+    def test_partial_coverage_states_the_rate(self):
+        s = self._sent([{"year": 2026, "rate": 61.2}])
+        self.assertIn("61.2", s)
+        self.assertIn("核验率", s)
+
+    def test_unstarted_coverage_says_so(self):
+        s = self._sent([{"year": 2026, "rate": 0.0}])
+        self.assertIn("尚未开始核验", s)
+
+    def test_no_rows_produces_no_claim(self):
+        self.assertEqual(self._sent([]), "")
+
+
 class TestMultipleComparisons(unittest.TestCase):
     """P32: with ~15 verticals tested per year, a bare p<0.05 is not a result.
 
