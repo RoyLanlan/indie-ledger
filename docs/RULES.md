@@ -519,6 +519,50 @@ still being sampled" — was hardcoded and became false the moment the
 sampler finished. Same defect as P33, and the reason P33 exists: state
 about the pipeline's current condition are computed at render time.
 
+### P37 — A double-counted phrase inflates the "strong" band (2026-11-09)
+`categorize.py` scores a title by summing the weights of every keyword
+that matches. A multi-word keyword contains its constituent words, and
+the word-boundary guard does not stop it: `-` and spaces are not
+`[a-z0-9]`, so "e-signature" fires BOTH `e-signature` (2) and
+`signature` (1) — score 3 for one signal. "code editor" fires
+`code editor` (2) + `editor` (2) + `rust` (2) = 6. "machine
+learning" fires `machine learning` + `learning`. 73 such pairs exist in
+the taxonomy.
+
+The fix (suppress a constituent word when the phrase containing it
+also matched) was implemented and measured, and it makes things WORSE:
+
+```text
+                   before      after suppression
+overall            83.3%          80.8%
+weak (1-2)         76.5%          76.5%
+mid (3-5)          87.0%          85.5%
+strong (6+)        91.3%          78.6%
+coverage           74.6%          74.6%
+```
+
+It moved 9 rows out of "strong" into "mid", and the strong band fell
+by 12.7 points. So the published **91.3% strong-band precision is
+inflated**: those rows were strong because a phrase was counted
+twice, not because they carried more evidence. Reverted — the honest
+number is that strong labels are ~79% precise, not ~91%.
+
+Why the double-count still helps accuracy: the redundant word is
+usually a *different* signal than the phrase ("code editor" + "editor"
++ "rust" is genuinely three facts). The word-boundary guard cannot
+tell "rust" inside "e-signature" from "rust" standing alone.
+
+Do NOT re-attempt this fix by suppressing. If it is revisited, it must
+be revisited with a larger labelled sample, because the current
+n=120 cannot separate "double-counting inflates the band" from
+"double-counting is accidentally correct for these titles".
+
+The lesson is not "the fix was wrong" — it is that **a published
+per-band precision number is a claim about the corpus, and a change to
+the scorer that moves rows between bands invalidates every band number
+already published.** Any scorer change must re-measure and re-publish
+all bands together, never just the headline.
+
 ---
 
 ## 7. Pipeline contract
