@@ -724,3 +724,75 @@ whichever branch the author happens to be working on.
 
 The general rule: **before and after every publish, verify the tree of
 the repository's default branch, not the local branch you pushed from.**
+
+### P41 — A p-value without a stated null hypothesis is not a result (2026-11-12)
+
+An independent subagent computed a mortality split by HN points and reported
+`p ≈ 3.4e-8`. Re-derivation on the same rows showed the figure came from
+testing against the *complement group's own* death rate (1.66%), not against
+the same-year baseline (4.79%).
+
+| test | p |
+|---|---|
+| vs same-year baseline, one-sided binomial | 0.026 |
+| vs complement group's own rate | 1.2e-42 |
+| two-proportion z-test vs same-year baseline | **0.19 (not significant)** |
+
+The reported number was 10+ orders of magnitude more significant than the
+honest one. The split is real (5.55% vs 4.79%) but **weak**; the headline p
+was an artifact of the choice of reference.
+
+The general rule: **every p-value must state (a) the null hypothesis,
+(b) the reference population, and (c) the test. A p-value reported without
+those three is not publishable.** When a subgroup is compared to a baseline,
+the baseline is the null, not the complement.
+
+### P42 — A snapshot measured at a fixed age is not a life-cycle statistic (2026-11-12)
+
+"Stopped updating within 30 days of launch" measured 30.31% / 35.32% / 47.84%
+for the 2024 / 2025 / 2026 cohorts. But the same metric, split by how long the
+repo had actually been observed, moves in the opposite direction:
+
+| exposure | 2024 cohort |
+|---|---|
+| age 365–730d | 21.19% |
+| age 730d+ | 71.74% |
+| all ages | 30.31% |
+
+The metric is not a property of the cohort; it is a property of **how long we
+have watched**. Repos that launched in 2026 have a median observed age of
+49 days, so most of them *cannot yet have* shown a long dormancy — yet they
+score the *highest*. That is right-censoring in reverse: the short cohort has
+had less time to reveal the behaviour, and its apparent "early stopping" is
+inflated by projects whose last push simply has not been pushed yet.
+
+The general rule: **a life-cycle statistic must be computed within a fixed
+exposure window, or stratified by exposure. A metric whose value changes
+materially when you stratify by observation time is measuring the observer,
+not the cohort.** Never publish an uncensored life-cycle number across
+cohorts of different ages.
+
+### P43 — A snapshot metric that is read after the outcome is not a predictor (2026-11-12)
+
+"Repos with ≥50 stars died 1/1960 (2024), 0/2540 (2025), 0/3360 (2026)" —
+`p ≈ 1e-27` against baseline. Superficially the strongest signal in the
+dataset. But `stars` in `repo_status.jsonl` is the count **at verification
+time (2026-11-09)**, not at launch:
+
+| cohort | median stars, dead | median stars, not dead |
+|---|---|---|
+| 2024 | **0** | 53 |
+| 2025 | **0** | 23 |
+| 2026 | **0** | 11 |
+
+A deleted repository cannot accrue new stars. The star count of a dead repo
+is therefore mechanically near zero, so "≥50 stars ⇒ never dies" is largely
+a restatement of "repos that were still alive in 2026 have stars".
+
+The general rule: **a predictor must be measurable at or before the moment
+of prediction.** A metric read after the outcome can only describe the
+outcome. HN `points` is a legitimate leading indicator (measured at launch);
+`stars` at verification time is not, and must never be sold as a predictor.
+The test for this: *would I have been able to read this number on the day the
+project launched?* If not, it is not a predictor, no matter how large its
+apparent effect.
