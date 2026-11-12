@@ -63,7 +63,28 @@ def linecount(path):
 
 
 def today():
-    return datetime.date.today().isoformat()
+    """UTC today, not local today.
+
+    BUGFIX (2026-11-12): the host runs on CST (UTC+8) and the cron fires at
+    ~03:23 local, which is still the PREVIOUS UTC day. Using the local date
+    made the collector write a day file for a UTC day that had not started
+    yet (Algolia returns 0 hits for a future UTC day), producing empty day
+    files for 2026-11-10/11/12. Algolia's numericFilters are UTC-based, so
+    every date boundary here must be UTC.
+    """
+    return datetime.datetime.now(datetime.timezone.utc).date().isoformat()
+
+
+def trailing_days(n=7):
+    """The last n UTC days (including today) are always re-fetched.
+
+    BUGFIX (2026-11-12): a day file written while its UTC day is still in
+    progress is a partial snapshot. Show HN posts keep arriving for hours
+    after the UTC day starts, so those days must be topped up on every run
+    rather than being treated as complete.
+    """
+    end = datetime.datetime.now(datetime.timezone.utc).date()
+    return [(end - datetime.timedelta(days=i)).isoformat() for i in range(n)]
 
 
 def stage_collect():
@@ -82,6 +103,11 @@ def stage_collect():
             missing.append(k)
         d += datetime.timedelta(days=1)
 
+    # Always refresh the trailing window: those UTC days may have been
+    # captured mid-flight, so their files can be incomplete.
+    trailing = [k for k in trailing_days() if k in have and k not in missing]
+    missing.extend(trailing)
+
     if not missing:
         print(f"collect: all days present ({len(have)} days)")
         return 0
@@ -91,6 +117,7 @@ def stage_collect():
     missing.sort(reverse=True)
     cmd = [sys.executable, os.path.join(HERE, "backfill.py"),
            "--start", missing[-1], "--end", missing[0], "--outdir", DATA]
+    print(f"collect: refreshing trailing window {trailing}")
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
     print(r.stdout[-2000:])
     if r.returncode != 0:

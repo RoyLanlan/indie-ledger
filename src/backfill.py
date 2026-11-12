@@ -138,10 +138,16 @@ def github_repo(url):
 
 
 def fetch_day(day):
-    """Fetch one calendar day of Show HN posts. Returns list of raw hits."""
+    """Fetch one UTC calendar day of Show HN posts.
+
+    Returns (posts, complete). `complete` is False when a page failed to
+    load after all retries -- the caller must then merge rather than
+    overwrite, so a transient network failure can never truncate a day.
+    """
     lo = ts(day)
     hi = lo + 86400
     posts, seen = [], set()
+    complete = True
     for page in range(12):
         url = "https://hn.algolia.com/api/v1/search_by_date?" + urllib.parse.urlencode({
             "tags": "show_hn", "hitsPerPage": 100, "page": page,
@@ -157,6 +163,7 @@ def fetch_day(day):
                 if attempt == 3:
                     log(f"  !! day {day} page {page} FAILED: {e}")
                     d = None
+                    complete = False
                     break
                 time.sleep(2 * (attempt + 1))
         if d is None:
@@ -172,7 +179,10 @@ def fetch_day(day):
         if len(posts) >= d.get("nbHits", 0):
             break
         time.sleep(0.25)
-    return posts
+    else:
+        # page budget exhausted without reaching nbHits: truncated result
+        complete = False
+    return posts, complete
 
 
 def normalize(hit, day):
@@ -239,13 +249,33 @@ def main():
             stats["skipped"] += 1
             day += datetime.timedelta(days=1)
             continue
-        hits = fetch_day(ds)
+        hits, complete = fetch_day(ds)
         recs = [normalize(h, ds) for h in hits]
-        with open(os.path.join(args.outdir, "days", ds + ".json"), "w") as f:
+
+        # Merge with any previously stored rows for this day: the day file is
+        # append-only in effect, so a short or failed fetch can only add
+        # records, never remove them.
+        day_path = os.path.join(args.outdir, "days", ds + ".json")
+        prev = []
+        if os.path.exists(day_path):
+            try:
+                prev = json.load(open(day_path))
+            except Exception:
+                prev = []
+        merged = {r["id"]: r for r in prev}
+        before = len(merged)
+        for r in recs:
+            merged.setdefault(r["id"], r)
+        recs = list(merged.values())
+        if not complete:
+            log(f"  !! day {ds} incomplete fetch -> merged, kept {before} prior rows")
+        with open(day_path, "w") as f:
             json.dump(recs, f)
         done[ds] = len(recs)
         stats["days"] += 1
         stats["posts"] += len(recs)
+        if not complete:
+            stats["incomplete_days"] += 1
         for r in recs:
             stats[r["kind"]] += 1
             if r["repo"]:

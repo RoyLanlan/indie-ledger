@@ -41,6 +41,8 @@ Where a rule exists, it exists because the naive version of it was measured wron
 | Use `tags=show_hn`, not `tags=story` | `tags=story` without `query` returns empty. This was the source of the old "Algolia is unreliable" note — it was wrong. |
 | Use UTC midnight for day boundaries | The host runs CST; local midnight shifts cohorts by 8 hours and corrupts monthly and yearly groupings. |
 | Store per-day files plus a rebuilt ledger | A partial run must never corrupt prior data. The ledger is rebuilt from day files, deduped by HN `objectID`. |
+| The day file is **merged**, never overwritten | A failed or short fetch must only add records. An overwrite turns a transient network error into permanent data loss. |
+| Re-fetch a rolling **trailing window** (7 days) | A day file written while its UTC day is still running is a partial snapshot. Never treat a day as final until the day is over. |
 
 **Host classification** (measured on 88,874 posts). `product_site` is kept.
 Everything else is classified out:
@@ -562,6 +564,76 @@ per-band precision number is a claim about the corpus, and a change to
 the scorer that moves rows between bands invalidates every band number
 already published.** Any scorer change must re-measure and re-publish
 all bands together, never just the headline.
+
+### P38 — A day file written mid-day is a partial snapshot, not a day (2026-11-12)
+
+The L1 collector scheduled at 03:23 CST (= 19:23 UTC the previous day)
+used `datetime.date.today()` — the **local** date — to decide which days
+were already collected, while Algolia's `numericFilters` slice by **UTC**
+day. Two consequences, both silent:
+
+1. The collector wrote a day file for a UTC day that had not started yet.
+   Algolia returns `nbHits=0` for a future day, so the file was empty and
+   the stage reported success.
+2. A day file was written while its UTC day was still in progress. Show HN
+   posts keep arriving for hours after the UTC day opens, so the file held
+   a partial snapshot and was never topped up.
+
+Measured damage on 2026-11-12, before the fix:
+
+```
+2026-11-09   Algolia 136   file   8    <- written 3h into the UTC day
+2026-11-10   Algolia 199   file   0    <- future UTC day
+2026-11-11   Algolia 148   file   0    <- future UTC day
+```
+
+475 posts were missing from the published ledger — 0.53% of the corpus,
+invisible because every stage reported "DONE" and the file counts and
+totals still looked plausible.
+
+The fix has two parts, and the second is the one that matters:
+
+- `today()` returns the UTC date. This alone fixes the *future-day* half,
+  and it enforces rule 2's existing "Use UTC midnight for day boundaries".
+- The collector **re-fetches a rolling trailing window** (now 7 days) on
+  every run instead of treating a day file as final once written. A day
+  file is a snapshot of a day that may still be in progress, so it can
+  never be authoritative until the day is over.
+
+And a third change, which is what makes the whole thing safe to run
+daily: **`fetch_day` now reports whether it got everything, and the day
+writer merges instead of overwrites.** A page that fails after all
+retries used to produce a short list that was written over a good file.
+Now a failed fetch can only add records; it can never remove them. The
+day file is append-only in effect.
+
+Verification after the fix (Algolia `nbHits` vs. rows in the day file):
+
+```
+2026-11-03  187/187   2026-11-08   96/96
+2026-11-04  163/163   2026-11-09  136/136
+2026-11-05  180/180   2026-11-10  199/199
+2026-11-06  108/108   2026-11-11  148/148
+2026-11-07  112/112   2026-11-12    0/0   (day not started)
+```
+
+The lesson is the same shape as P31: **a stage that exits 0 has only
+proved that it ran, not that the data on disk is right.** The collector
+had been reporting `DONE days=1 posts=88874` every morning for a week
+while quietly dropping half of every day's posts. The check that found it
+was not a log line — it was re-querying the source and comparing counts
+day by day. Every collector needs that count comparison, not just a
+success code.
+
+Two residual differences from Algolia are **expected and correct**, not
+bugs:
+
+- A row the file has and Algolia does not (e.g. `50256356`, 2026-10-27)
+  is a Show HN post that was later **deleted from HN**. Algolia drops
+  deleted stories; the ledger keeps the historical record. Verified
+  against the Firebase API: `deleted=true`.
+- A row Algolia has and the file lacks (e.g. `50405363`, 2026-11-07) is
+  a genuine miss, now recovered.
 
 ---
 
