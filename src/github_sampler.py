@@ -19,6 +19,7 @@ import json, os, sys, time, argparse, datetime, random
 from collections import Counter, defaultdict
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+from paths import ROOT, DATA as _DATA_DIR, REPORTS as _REPORTS_DIR
 sys.path.insert(0, HERE)
 import github_enrich
 from github_enrich import (api, rate_limit, classify_repo, TOKEN,
@@ -50,8 +51,8 @@ def load_token_from_file(path):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ledger", default=os.path.join(HERE, "data", "ledger.jsonl"))
-    ap.add_argument("--out", default=os.path.join(HERE, "data", "repo_status.jsonl"))
+    ap.add_argument("--ledger", default=os.path.join(ROOT, "data", "ledger.jsonl"))
+    ap.add_argument("--out", default=os.path.join(ROOT, "data", "repo_status.jsonl"))
     ap.add_argument("--pat-file", default="")
     ap.add_argument("--batch", type=int, default=0, help="0 = run until quota exhausted")
     ap.add_argument("--idle-sleep", type=int, default=60)

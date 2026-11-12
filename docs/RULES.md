@@ -681,3 +681,46 @@ quota, which a PAT removes.
 - Domain scan measured at 11.5 domains/min (DNS resolution dominates the
   1s delay) -> ~53 hours for 36,881 domains, not the ~14 estimated earlier.
 - Both sweeps are append-only and resumable; neither loses prior data.
+
+### P39 — The published scripts must run from the published layout (2026-11-12)
+
+The scripts are developed in a working tree where `data/` and `reports/`
+sit next to `pipeline.py`, and they are published into `src/` where those
+directories sit one level up, at the repository root.
+
+Every script resolved its defaults with `os.path.join(HERE, "data", ...)`,
+where `HERE` is the script's own directory. In the published layout that
+points at `src/data/ledger.jsonl`, which does not exist. The failure was
+not a crash: `analyze.py` printed `ledger rows: 0` and `render_report.py`
+died on `UnboundLocalError: cat_bands` — an empty category set, not a
+missing file. A reader cloning the repository would have seen either an
+empty report or a traceback, with nothing pointing at the path bug.
+
+The fix is a shared resolver (`src/paths.py`) that finds the directory
+CONTAINING `data/` or `reports/`: it checks the script's own directory
+first, then the parent. Both layouts now resolve to the same root.
+
+The general rule: **a default path that does not exist must fail loudly,
+not degrade into a zero-row result.** An analysis stage that reads 0 rows
+and exits 0 is more dangerous than one that raises, because it produces a
+plausible empty report. Every data-reading stage must assert that the
+input file exists before parsing it.
+
+### P40 — A repository's default branch is the product's front door (2026-11-12)
+
+The repository had two branches. `master` held all 31 commits and the
+full tree. `main` — which GitHub had set as the **default branch** —
+held a single "Initial commit" containing only a `LICENSE` file.
+
+Every visitor to `https://github.com/RoyLanlan/indie-ledger` saw an
+essentially empty project: a license, no README, no data, no report. The
+work was real and published; it was simply behind a door that nobody
+opened. `git ls-remote` showing both branches is not sufficient to catch
+this — the check has to be "what does the default branch contain".
+
+Fix: `main` now points at the same commit as `master`. The published
+repo is verified by reading the tree of the **default** branch, not of
+whichever branch the author happens to be working on.
+
+The general rule: **before and after every publish, verify the tree of
+the repository's default branch, not the local branch you pushed from.**

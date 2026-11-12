@@ -43,6 +43,7 @@ import sys
 from collections import Counter, defaultdict
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+from paths import ROOT, DATA as _DATA_DIR, REPORTS as _REPORTS_DIR
 sys.path.insert(0, HERE)
 from categorize import categorize, TAXONOMY_VERSION  # noqa: E402
 
@@ -184,7 +185,7 @@ LABELLED = {
 
 
 def load_rows():
-    path = os.path.join(HERE, "data", "ledger.jsonl")
+    path = os.path.join(ROOT, "data", "ledger.jsonl")
     rows = []
     with open(path, encoding="utf-8") as f:
         for line in f:
@@ -305,7 +306,7 @@ def main():
     # Persist the measurement so the report can quote a measured number
     # instead of a hand-typed one. The report must never assert a figure
     # that no file in the repo produced.
-    audit_out = os.path.join(HERE, "data", "category_audit.json")
+    audit_out = os.path.join(ROOT, "data", "category_audit.json")
     with open(audit_out, "w", encoding="utf-8") as f:
         json.dump({
             "taxonomy_version": TAXONOMY_VERSION,

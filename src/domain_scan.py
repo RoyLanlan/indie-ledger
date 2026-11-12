@@ -20,6 +20,7 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+from paths import ROOT, DATA as _DATA_DIR, REPORTS as _REPORTS_DIR
 sys.path.insert(0, HERE)
 from liveness import classify
 
@@ -41,8 +42,8 @@ def load_ledger(path):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ledger", default=os.path.join(HERE, "data", "ledger.jsonl"))
-    ap.add_argument("--out", default=os.path.join(HERE, "data", "liveness.jsonl"))
+    ap.add_argument("--ledger", default=os.path.join(ROOT, "data", "ledger.jsonl"))
+    ap.add_argument("--out", default=os.path.join(ROOT, "data", "liveness.jsonl"))
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--delay", type=float, default=0.05,
                     help="pause after the request, not before it")

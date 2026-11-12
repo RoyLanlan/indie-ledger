@@ -20,6 +20,7 @@ from collections import Counter
 UA = {'User-Agent': 'Mozilla/5.0 (compatible; indie-ledger/0.1; +research)',
       'Accept': 'application/vnd.github+json'}
 HERE = os.path.dirname(os.path.abspath(__file__))
+from paths import ROOT, DATA as _DATA_DIR, REPORTS as _REPORTS_DIR
 
 
 def load_token():
@@ -245,8 +246,8 @@ def classify_repo(info, launch_day):
 def main():
     import argparse
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ledger", default=os.path.join(HERE, "data", "ledger.jsonl"))
-    ap.add_argument("--out", default=os.path.join(HERE, "data", "repo_status.jsonl"))
+    ap.add_argument("--ledger", default=os.path.join(ROOT, "data", "ledger.jsonl"))
+    ap.add_argument("--out", default=os.path.join(ROOT, "data", "repo_status.jsonl"))
     ap.add_argument("--limit", type=int, default=0, help="0 = all")
     ap.add_argument("--delay", type=float, default=0.25)
     args = ap.parse_args()

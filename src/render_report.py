@@ -14,11 +14,12 @@ import json, os, sys, argparse, datetime
 from collections import Counter, defaultdict
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+from paths import ROOT, DATA as _DATA_DIR, REPORTS as _REPORTS_DIR
 sys.path.insert(0, HERE)
 from analyze import (build, cohort_table, vertical_table,
                      vertical_year_table, vertical_significance, load, MIN_N)
 
-REPORT_DIR = os.path.join(HERE, "reports")
+REPORT_DIR = os.path.join(ROOT, "reports")
 
 # Chinese names for the taxonomy buckets. The report is Chinese, the
 # taxonomy keys are English, and an English key in a Chinese report reads
@@ -551,10 +552,10 @@ def render(products, cohorts, meta):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ledger", default=os.path.join(HERE, "data", "ledger.jsonl"))
-    ap.add_argument("--repo", default=os.path.join(HERE, "data", "repo_status.jsonl"))
-    ap.add_argument("--domain", default=os.path.join(HERE, "data", "liveness.jsonl"))
-    ap.add_argument("--products", default=os.path.join(HERE, "data", "products.json"))
+    ap.add_argument("--ledger", default=os.path.join(ROOT, "data", "ledger.jsonl"))
+    ap.add_argument("--repo", default=os.path.join(ROOT, "data", "repo_status.jsonl"))
+    ap.add_argument("--domain", default=os.path.join(ROOT, "data", "liveness.jsonl"))
+    ap.add_argument("--products", default=os.path.join(ROOT, "data", "products.json"))
     ap.add_argument("--outdir", default=REPORT_DIR)
     ap.add_argument("--out", default="")
     args = ap.parse_args()
@@ -584,7 +585,7 @@ def main():
     # Attach the industry vertical. Same join as analyze.py: the
     # category follows the product's earliest Show HN post.
     cat_by_id = {}
-    for c in load(os.path.join(HERE, "data", "categories.jsonl")):
+    for c in load(os.path.join(ROOT, "data", "categories.jsonl")):
         if c.get("id"):
             cat_by_id[c["id"]] = c.get("category")
     cat_by_key = {}
@@ -631,7 +632,7 @@ def main():
     # from audit_categories.py; if that file has not been run yet, report
     # "not measured" rather than a fake figure.
     cat_n = cat_precision = cat_coverage = 0
-    audit_path = os.path.join(HERE, "data", "category_audit.json")
+    audit_path = os.path.join(ROOT, "data", "category_audit.json")
     if os.path.exists(audit_path):
         try:
             aud = json.load(open(audit_path))

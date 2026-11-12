@@ -2,8 +2,8 @@
 
 > Show HN 上线产品的后续追踪台账：谁还活着，谁死了。
 
-[![data](https://img.shields.io/badge/data-88%2C874_posts-blue)](data/ledger.jsonl)
-[![rules](https://img.shields.io/badge/rules-2026--11--09-green)](docs/RULES.md)
+[![data](https://img.shields.io/badge/data-89%2C350_posts-blue)](data/ledger.jsonl)
+[![rules](https://img.shields.io/badge/rules-2026--11--12-green)](docs/RULES.md)
 [![license](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 
 面向中国出海开发者的独立开发者产品情报。以 Show HN 为发现入口，以 GitHub 仓库状态为高置信证据，以域名信号为低置信补充。
@@ -30,16 +30,16 @@
 
 | 指标 | 数值 |
 |---|---|
-| Show HN 帖子（2024-01-01 → 2026-11-09） | 88,874 |
-| 去重后独立产品 | 61,708 |
-| 去重后 GitHub 仓库 | 24,767 |
-| 去重后产品域名 | 38,617 |
+| Show HN 帖子（2024-01-01 → 2026-11-12） | 89,350 |
+| 去重后独立产品 | 62,073 |
+| 去重后 GitHub 仓库 | 24,895 |
+| 去重后产品域名 | 38,828 |
 
-> 三个数字是不同口径，不能互相替代：61,708 是产品，24,767 是仓库，
-> 38,617 是域名。一个域名可以承载多个 Show HN 产品，一个仓库也可以
+> 四个数字是不同口径，不能互相替代：62,073 是产品，24,895 是仓库，
+> 38,828 是域名。一个域名可以承载多个 Show HN 产品，一个仓库也可以
 > 被多个产品引用——写「X / Y 已核验」之前必须确认 X 和 Y 数的是同一种东西。
 
-原始帖子类型分布：`product_site` 55% · `github` 31% · `hosting` 5% · `no_url` 4% · `platform` 2% · `content_host` 0%。
+原始帖子类型分布：`product_site` 56% · `github` 32% · `hosting` 5% · `no_url` 5% · `platform` 2% · `content_host` 0%。
 
 平台类域名（google.com、huggingface.co、apple.com、workers.dev、blogspot.com、itch.io 等）已剔除。
 
@@ -51,11 +51,11 @@
 
 | 层 | 证据 | 强度 | 覆盖 |
 |---|---|---|---|
-| **高** | GitHub 仓库状态（404 / archived / pushed_at） | 无歧义 | **24,767 / 24,767 仓库，已全量核验** |
-| **中** | DNS + HTTP 响应 | 可确认站点消失，无法区分死掉与搬家 | **38,617 / 38,617 域名，已全量核验** |
+| **高** | GitHub 仓库状态（404 / archived / pushed_at） | 无歧义 | **24,929 / 24,929 仓库，已全量核验** |
+| **中** | DNS + HTTP 响应 | 可确认站点消失，无法区分死掉与搬家 | **38,828 / 38,828 域名，已全量核验** |
 | **无** | 无信号 | — | 计入 `unverified`，不参与任何比率 |
 
-两层都已扫描完毕：GitHub 侧 24,767 个仓库、域名侧 38,617 个产品域名，
+两层都已扫描完毕：GitHub 侧 24,929 个仓库、域名侧 38,828 个产品域名，
 无重复、无遗漏，每条判定都带证据。报告中的队列存活率是终值，
 不再随采样推进而变化。
 

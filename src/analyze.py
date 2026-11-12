@@ -16,6 +16,7 @@ import json, os, sys, datetime, argparse, math
 from collections import Counter, defaultdict
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+from paths import ROOT, DATA as _DATA_DIR, REPORTS as _REPORTS_DIR
 MIN_N = 30  # red line: never publish a cohort smaller than this
 
 
@@ -364,11 +365,11 @@ def vertical_significance(products, tier="high", year=None, min_n=MIN_N):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ledger", default=os.path.join(HERE, "data", "ledger.jsonl"))
-    ap.add_argument("--repo", default=os.path.join(HERE, "data", "repo_status.jsonl"))
-    ap.add_argument("--domain", default=os.path.join(HERE, "data", "liveness.jsonl"))
-    ap.add_argument("--categories", default=os.path.join(HERE, "data", "categories.jsonl"))
-    ap.add_argument("--out", default=os.path.join(HERE, "data", "products.json"))
+    ap.add_argument("--ledger", default=os.path.join(ROOT, "data", "ledger.jsonl"))
+    ap.add_argument("--repo", default=os.path.join(ROOT, "data", "repo_status.jsonl"))
+    ap.add_argument("--domain", default=os.path.join(ROOT, "data", "liveness.jsonl"))
+    ap.add_argument("--categories", default=os.path.join(ROOT, "data", "categories.jsonl"))
+    ap.add_argument("--out", default=os.path.join(ROOT, "data", "products.json"))
     args = ap.parse_args()
 
     ledger = load(args.ledger)

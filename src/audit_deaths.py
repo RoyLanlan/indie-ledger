@@ -23,6 +23,7 @@ import json, os, sys, time, random, argparse, datetime
 import urllib.request, urllib.error
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+from paths import ROOT, DATA as _DATA_DIR, REPORTS as _REPORTS_DIR
 TOKEN_FILE = os.path.expanduser("~/.hermes/mcp-tokens/github-token")
 UA = {"User-Agent": "indie-ledger-audit"}
 
@@ -67,7 +68,7 @@ def check(repo, token):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--repo-status",
-                    default=os.path.join(HERE, "data", "repo_status.jsonl"))
+                    default=os.path.join(ROOT, "data", "repo_status.jsonl"))
     ap.add_argument("--sample", type=int, default=25)
     ap.add_argument("--threshold", type=float, default=5.0,
                     help="max acceptable false-death rate, percent")

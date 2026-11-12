@@ -15,8 +15,8 @@ Usage:
 import json, os, sys, subprocess, time, argparse, datetime, fcntl, shutil
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DATA = os.path.join(HERE, "data")
-REPO = os.path.join(HERE, "repo")
+from paths import ROOT, DATA
+REPO = os.path.join(ROOT, "repo") if os.path.isdir(os.path.join(ROOT, "repo")) else ROOT
 LOCKS = os.path.join(HERE, ".locks")
 
 os.makedirs(LOCKS, exist_ok=True)
@@ -215,7 +215,7 @@ def stage_report():
     # the previous report in place, unchanged - which is
     # indistinguishable from "regenerated and nothing changed". After
     # the render we check the file was actually touched.
-    rep_dir_src = os.path.join(HERE, "reports")
+    rep_dir_src = os.path.join(ROOT, "reports")
     before = {}
     if os.path.isdir(rep_dir_src):
         for f in os.listdir(rep_dir_src):
@@ -265,9 +265,9 @@ def stage_report():
             shutil.copy2(src, os.path.join(out, name))
     rep_dir = os.path.join(REPO, "reports")
     os.makedirs(rep_dir, exist_ok=True)
-    for f in os.listdir(os.path.join(HERE, "reports")):
+    for f in os.listdir(os.path.join(ROOT, "reports")):
         if f.endswith(".md"):
-            shutil.copy2(os.path.join(HERE, "reports", f),
+            shutil.copy2(os.path.join(ROOT, "reports", f),
                          os.path.join(rep_dir, f))
     print("report: published to repo working tree")
     return 0
