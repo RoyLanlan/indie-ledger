@@ -478,19 +478,26 @@ class TestAuditGuards(unittest.TestCase):
     rows - too few to detect the 5% rate the audit is supposed to catch.
     """
 
-    def test_audit_passes_the_min_conclusive_count_to_the_script(self):
+    def _audit_help(self):
+        """Run audit_deaths.py --help by ABSOLUTE path.
+
+        These tests used a relative filename, so they only passed when the
+        suite happened to be run from src/.  From a fresh clone at the repo
+        root -- exactly how a reader runs it -- the subprocess could not
+        find the script and the assertion failed on empty output.
+        """
         import subprocess, sys, os
-        out = subprocess.run(
-            [sys.executable, "audit_deaths.py", "--help"],
+        script = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                              "audit_deaths.py")
+        return subprocess.run(
+            [sys.executable, script, "--help"],
             capture_output=True, text=True, timeout=60).stdout
-        self.assertIn("--min-conclusive", out)
+
+    def test_audit_passes_the_min_conclusive_count_to_the_script(self):
+        self.assertIn("--min-conclusive", self._audit_help())
 
     def test_min_conclusive_default_is_reasonable(self):
-        import subprocess, sys
-        out = subprocess.run(
-            [sys.executable, "audit_deaths.py", "--help"],
-            capture_output=True, text=True, timeout=60).stdout
-        self.assertIn("minimum number of conclusive lookups", out)
+        self.assertIn("minimum number of conclusive lookups", self._audit_help())
 
     def test_pass_line_always_reports_the_conclusive_count(self):
         """The PASS line must state how many rows backed it, so a rate
