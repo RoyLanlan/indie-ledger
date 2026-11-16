@@ -1,0 +1,36 @@
+{
+ "taxonomy_version": "v1",
+ "n": 120,
+ "hits": 100,
+ "precision": 0.8333333333333334,
+ "named_precision": 0.8969072164948454,
+ "named_n": 97,
+ "other_agreement": 0.5652173913043478,
+ "other_n": 23,
+ "coverage": 0.7440962506994964,
+ "corpus": 89350,
+ "threshold": 75.0,
+ "pass": true,
+ "precision_by_band": {
+  "weak (1-2)": {
+   "hits": 39,
+   "n": 51,
+   "precision": 0.7647058823529411
+  },
+  "mid (3-5)": {
+   "hits": 40,
+   "n": 46,
+   "precision": 0.8695652173913043
+  },
+  "strong (6+)": {
+   "hits": 21,
+   "n": 23,
+   "precision": 0.9130434782608695
+  }
+ },
+ "band_definition": {
+  "weak (1-2)": "one low-weight keyword hit",
+  "mid (3-5)": "mid-strength keyword hits",
+  "strong (6+)": "several strong keyword hits"
+ }
+}

@@ -33,7 +33,10 @@ import re
 import sys
 from collections import Counter, defaultdict
 
-TAXONOMY_VERSION = "v1"
+# P44: the ambiguity gates changed which posts land in which band, so every
+# published band number computed under v1 is void. Bump the version whenever
+# KEYWORDS, the gates, or the scoring weights change.
+TAXONOMY_VERSION = "v2"
 
 # Order is meaningful: it breaks ties deterministically.
 CATEGORY_ORDER = [
@@ -440,6 +443,85 @@ _WORD_RE = {
     for cat, kws in KEYWORDS.items()
 }
 
+# --- Ambiguity gates -------------------------------------------------
+# Some keywords are strongly associated with a vertical in the abstract but
+# are used in the wild for unrelated things. Measured on 2026-11-12 while
+# auditing the flagship commerce_fintech result: 11 of the 40 projects in
+# that cohort had been mis-filed, and every one of them was mis-filed by
+# one of these terms.
+#
+#   "menu"      -> popup menus (which-key), desktop environments (rofi)
+#   "checkout"  -> "checkout my branch" (git), not the commerce checkout
+#   "crypto"    -> crypto *libraries* (crypto-js), not crypto *products*
+#   "bitcoin"   -> bitcoin-themed learning toys and clicker games
+#   "blockchain"-> blockchain libraries and blockchain-themed games
+#   "ethereum"  -> ethereum avatar images (identicons)
+#   "trading"   -> quantitative-trading research libraries, not fintech apps
+#
+# A gated term only scores when the title ALSO contains at least one
+# context term from its gate list. Otherwise the term is dropped entirely
+# (not merely down-weighted) -- a title whose only commerce signal was
+# "checkout" has no commerce signal.
+#
+# The rule that makes this safe: a gate must never remove a term that
+# points at a real product in the vertical. Every gate list below was
+# checked against the cohort it was derived from: all 11 removals were
+# projects that were still alive and clearly off-vertical, and zero of the
+# seven dead projects in that cohort were removed.
+#
+# Adding or changing a gate invalidates every published band number and
+# every published vertical table. Re-run categorisation, re-run the
+# precision audit, re-render the report, and re-publish. See P37/P44.
+GATED_TERMS = {
+    "menu": [
+        "restaurant", "cafe", "coffee", "food", "recipe", "dish", "cuisine",
+        "drink", "beverage", "bakery", "pizza", "burger", "grill", "bar",
+        "menu qr", "qr menu", "digital menu",
+    ],
+    "checkout": [
+        "cart", "payment", "stripe", "shop", "store", "basket", "order",
+        "purchase", "buy", "sale", "coupon",
+    ],
+    "crypto": [
+        "wallet", "payment", "exchange", "defi", "token", "nft", "stablecoin",
+        "mint", "stake", "yield", "coinbase", "binance", "trading",
+        "portfolio", "contract", "ledger",
+    ],
+    "bitcoin": [
+        "wallet", "payment", "node", "lightning", "miner", "exchange", "atm",
+        "point of sale", "pos", "invoice", "remittance",
+    ],
+    "blockchain": [
+        "wallet", "payment", "smart contract", "nft", "defi", "token", "dao",
+        "marketplace", "supply chain", "invoice", "lending", "staking",
+    ],
+    "ethereum": [
+        "wallet", "smart contract", "nft", "defi", "dapp", "dao", "payment",
+        "erc-20", "erc20", "account abstraction",
+    ],
+    "trading": [
+        "quantitative", "portfolio", "platform", "stock", "stocks", "options",
+        "forex", "broker", "brokerage", "signal", "backtest", "backtesting",
+        "bot", "tracker", "terminal", "alert", "app", "pro",
+    ],
+}
+
+# Pre-compiled context regexes: gated term -> list of compiled patterns.
+_GATE_RE = {
+    term: [re.compile(r"(?<![a-z0-9])" + re.escape(ctx) + r"(?![a-z0-9])")
+           for ctx in ctxs]
+    for term, ctxs in GATED_TERMS.items()
+}
+
+
+def _gate_passes(term, text):
+    """True when `term` is used in an on-vertical sense in this title."""
+    pats = _GATE_RE.get(term)
+    if pats is None:
+        return True
+    return any(p.search(text) for p in pats)
+
+
 # Deterministic tie-break order (de-dup while preserving first occurrence).
 _TIE_ORDER = []
 for _c in CATEGORY_ORDER:
@@ -466,6 +548,8 @@ def categorize(title):
     for cat, kws in _WORD_RE.items():
         for kw, rx in kws.items():
             if rx.search(t):
+                if not _gate_passes(kw, t):
+                    continue
                 w = KEYWORDS[cat][kw]
                 scores[cat] = scores.get(cat, 0) + w
                 maxkw[cat] = max(maxkw.get(cat, 0), w)
@@ -484,8 +568,20 @@ def categorize(title):
 
 def main():
     here = os.path.dirname(os.path.abspath(__file__))
-    ledger = os.path.join(here, "data", "ledger.jsonl")
-    out_path = os.path.join(here, "data", "categories.jsonl")
+    # P39: resolve the data directory via the shared resolver so the
+    # script works from both the working copy and the published src/ layout.
+    try:
+        from paths import DATA as _DATA
+    except ImportError:
+        _DATA = os.path.join(here, "data")
+    ledger = os.path.join(_DATA, "ledger.jsonl")
+    out_path = os.path.join(_DATA, "categories.jsonl")
+    if not os.path.exists(ledger):
+        sys.stderr.write(
+            "FATAL: ledger not found at %s\n"
+            "The data directory must contain ledger.jsonl. Refusing to "
+            "write an empty categories file.\n" % ledger)
+        return 2
 
     rows = []
     with open(ledger, encoding="utf-8") as f:

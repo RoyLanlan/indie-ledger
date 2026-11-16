@@ -17,7 +17,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 from paths import ROOT, DATA as _DATA_DIR, REPORTS as _REPORTS_DIR
 sys.path.insert(0, HERE)
 from analyze import (build, cohort_table, vertical_table,
-                     vertical_year_table, vertical_significance, load, MIN_N)
+                     vertical_year_table, vertical_significance, load,
+                     MIN_N, MIN_AGE_DAYS)
 
 REPORT_DIR = os.path.join(ROOT, "reports")
 
@@ -289,6 +290,58 @@ def render(products, cohorts, meta):
           f"其中归档 {meta.get('high_archived', 0):,} 个。")
         A("")
 
+        # --- how things die, and how long they last (P46) ---
+        # These are descriptive facts, not hypotheses: they need no
+        # significance test, no baseline and no multiple-comparison
+        # correction. They are also the most directly actionable part of
+        # the dataset, which is why they are published here rather than
+        # only the cross-vertical comparison.
+        dd = meta.get("death_profile")
+        if dd:
+            A("### 3.1　怎么死的：状态构成")
+            A("")
+            A("| 判定 | 数量 | 占比 |")
+            A("|---|---|---|")
+            for name, cnt, pct in dd["verdicts"]:
+                A(f"| {name} | {cnt:,} | {pct} |")
+            A("")
+            A(f"分母为高置信层已核验的 {dd['total']:,} 个产品。"
+              f"注意「不再维护」占 {dd['notmaint_pct']}，"
+              f"远大于「已死」的 {dd['dead_pct']}——"
+              "**大部分消失的项目不是被删除，而是被作者放着不管了**。"
+              "这两件事在数据里必须分开，因为它们的成因不同。")
+            A("")
+            A("### 3.2　死了多久：上线到消失的时间分布")
+            A("")
+            A("| 存活时长分位 | 天数 |")
+            A("|---|---|")
+            for lab, v in dd["quantiles"]:
+                A(f"| {lab} | {v} |")
+            A("")
+            A("| 上线后多久消失 | 数量 | 占比 |")
+            A("|---|---|---|")
+            for lab, cnt, pct in dd["death_buckets"]:
+                A(f"| {lab} | {cnt:,} | {pct} |")
+            A("")
+            A(f"**{dd['within_1y_pct']} 的死亡项目在上线一年内就消失了，"
+              f"{dd['within_2y_pct']} 在两年内。**"
+              f"这是全表最直接可用的一条事实："
+              f"上线后第一年是存活风险最高的窗口，"
+              f"而不是「越老越安全」。")
+            A("")
+            A("### 3.3　暴露期与死亡率的关系")
+            A("")
+            A("| 已被观察 | 样本 | 已死 | 死亡率 |")
+            A("|---|---|---|---|")
+            for lab, n, d, pct in dd["exposure_table"]:
+                A(f"| {lab} | {n:,} | {d:,} | {pct} |")
+            A("")
+            A(f"死亡率在观察满一年后趋于平稳（约 {dd['plateau_pct']}），"
+              "之后甚至略有回落——长尾是被筛出来的幸存者，"
+              "不是越来越大的坟场。跨年份比较必须对齐这个暴露期，"
+              "否则「被看得久」会被误读成「这个赛道更容易死」。")
+            A("")
+
     # --- medium tier ---
     A("## 四、中置信层（域名信号）")
     A("")
@@ -449,7 +502,7 @@ def render(products, cohorts, meta):
               "「已死占比」天然偏低，纵向比较必须看同一年的表。")
             A("")
 
-    # --- the one finding that survives a statistical test ---
+    # --- the statistical test, run on an exposure-matched cohort ---
     allsig = []
     for y, sigrows in sorted(meta.get("vertical_sig", {}).items()):
         n_tested = len(sigrows)
@@ -459,21 +512,40 @@ def render(products, cohorts, meta):
                 s2["year"] = y
                 s2["tested_count"] = n_tested
                 allsig.append(s2)
+    # Verticals that were significant WITHOUT the exposure match but are
+    # not significant with it. These are the ones a naive analysis would
+    # have published. P44: they must be shown, not hidden.
+    unmatched_only = []
+    for y, sigrows in sorted(meta.get("vertical_sig_unmatched", {}).items()):
+        matched = {s["category"] for s in
+                   meta.get("vertical_sig", {}).get(y, [])}
+        for sg in sigrows:
+            if sg["significant"] and sg["category"] not in matched:
+                s2 = dict(sg)
+                s2["year"] = y
+                s2["tested_count"] = len(sigrows)
+                unmatched_only.append(s2)
+    A("**表 5.4　统计显著性检验（精确二项分布，单侧，暴露期匹配）**")
+    A("")
+    A("上表里有些赛道的已死占比看着刺眼，但样本小的时候"
+      "波动很大。这里对每个赛道做一次检验："
+      "原假设是「该赛道的死亡率与同年整体一致」，"
+      "计算 P(观测死亡数 ≥ 实际死亡数)。")
+    A("")
+    A("**检验前先做一件事：把暴露期对齐。**"
+      "不同上线年份的项目「被观察了多久」不一样——"
+      "观察了 900 天的项目当然比观察了 200 天的更容易暴露出已经死亡。"
+      f"所以这里只保留**上线后至少被观察 {MIN_AGE_DAYS} 天**的项目参与比较，"
+      "并且这个阈值是事先定好的，不看数据再调。")
+    A("")
+    A("**每个年份要同时检验十来个赛道，所以裸的 p < 0.05 不够**——"
+      "检验这么多次，光靠运气也会冒出一个「显著」。"
+      "因此这里额外做 **Holm-Bonferroni 多重比较校正**："
+      "按 p 值从小到大排序，第 i 名的判定阈值是 0.05/(总数−i)，"
+      "而且排在前面的假设必须全部通过，后面的才算通过。"
+      "只有通过校正的赛道才会被写成结论。")
+    A("")
     if allsig:
-        A("**表 5.3　统计显著性检验（精确二项分布，单侧）**")
-        A("")
-        A("上表里有些赛道的已死占比看着刺眼，但样本小的时候"
-          "波动很大。这里对每个赛道做一次检验："
-          "原假设是「该赛道的死亡率与同年整体一致」，"
-          "计算 P(观测死亡数 ≥ 实际死亡数)。")
-        A("")
-        A("**每个年份要同时检验十来个赛道，所以裸的 p < 0.05 不够**——"
-          "检验这么多次，光靠运气也会冒出一个「显著」。"
-          "因此这里额外做 **Holm-Bonferroni 多重比较校正**："
-          "按 p 值从小到大排序，第 i 名的判定阈值是 0.05/(总数−i)，"
-          "而且排在前面的假设必须全部通过，后面的才算通过。"
-          "只有通过校正的赛道才会被写成结论。")
-        A("")
         A("| 年份 | 赛道 | 已死/已核验 | 该赛道 | 同年整体 | 倍数 | p 值 | 校正后 p | 判定 |")
         A("|---|---|---|---|---|---|---|---|---|")
         for sg in allsig:
@@ -483,41 +555,64 @@ def render(products, cohorts, meta):
               f"{sg['baseline']*100:.1f}% | {sg['ratio']:.1f}× | "
               f"{sg['p_value']:.5f} | {sg.get('p_holm', 1.0):.5f} | {verdict} |")
         A("")
-        for sg in allsig:
-            name = VERTICAL_CN.get(sg["category"], sg["category"])
-            if sg["significant"]:
-                A(f"**{sg['year']} 年「{name}」通过多重比较校正，"
-                  f"是唯一显著高于同年平均的赛道**："
-                  f"{sg['dead']}/{sg['verified']} 个已死（{sg['rate']*100:.1f}%），"
-                  f"是同年整体（{sg['baseline']*100:.1f}%）的 {sg['ratio']:.1f} 倍"
-                  f"（校正后 p = {sg.get('p_holm', 1.0):.5f}）。")
-            else:
-                A(f"**{sg['year']} 年「{name}」未通过多重比较校正**："
-                  f"裸 p = {sg['p_value']:.5f} 虽然小于 0.05，"
-                  f"但同年共检验了 {sg.get('tested_count', '多个')} 个赛道，"
-                  f"校正后 p = {sg.get('p_holm', 1.0):.5f}，"
-                  f"因此**不能**写成结论，只能记为「待观察」。")
-            A("")
-        A("其余赛道（AI、开发者工具、DevOps 等）在这个检验下"
-          "**与整体没有可区分的差异**——它们看起来的差异是样本波动，"
-          "不是赛道特性。这一点很重要："
-          "「AI 死亡率 5.0% vs 整体 4.8%」这种说法不该被当成结论。")
+    for sg in allsig:
+        name = VERTICAL_CN.get(sg["category"], sg["category"])
+        if sg["significant"]:
+            A(f"**{sg['year']} 年「{name}」通过多重比较校正，"
+              f"是当年唯一显著高于同年平均的赛道**："
+              f"{sg['dead']}/{sg['verified']} 个已死（{sg['rate']*100:.1f}%），"
+              f"是同年整体（{sg['baseline']*100:.1f}%）的 {sg['ratio']:.1f} 倍"
+              f"（校正后 p = {sg.get('p_holm', 1.0):.5f}）。")
+        else:
+            A(f"**{sg['year']} 年「{name}」未通过多重比较校正**："
+              f"裸 p = {sg['p_value']:.5f} 虽然小于 0.05，"
+              f"但同年共检验了 {sg.get('tested_count', '多个')} 个赛道，"
+              f"校正后 p = {sg.get('p_holm', 1.0):.5f}，"
+              f"因此**不能**写成结论，只能记为「待观察」。")
+    if not allsig:
+        A("**在暴露期对齐、样本量达标的赛道里，没有任何赛道通过多重比较校正。**")
         A("")
-        A("### 这条结论的三条限制")
+        A("也就是说：目前**没有**证据表明某个赛道的死亡率显著高于同年平均。"
+          "跨赛道的差异在这个量级的样本下测不出来，"
+          "任何「某赛道特别容易死」的说法都应当被视为未经验证。")
+    A("")
+    if not unmatched_only:
+        A("**曾经发布过、现已撤回的数字**：")
         A("")
-        A("1. **赛道是关键词定义的，不是产品自己申报的。**"
-          "「电商/金融」这个赛道的边界由分类器的关键词决定，"
-          "而这个赛道的关键词（store、payment、shop…）"
-          "恰好最容易误吸非商业仓库。这是循环论证风险，"
-          "无法用同一份数据消除。")
-        A("2. **样本只有几十个。**"
-          f"{allsig[0]['verified']} 个已核验样本，"
-          "单个仓库的判定错误就会明显改变比例。"
-          "已对其中全部已死样本做过 GitHub API 逐个复核，"
-          "确认是真 404，但这不能替代更大的样本。")
-        A("3. **「已死」只说明仓库没了，不说明商业失败。**"
-          "换仓库、闭源、合并进其他项目、改成只做服务，"
-          "都会让 GitHub 侧显示为死。")
+        A("本报告早期版本曾以「2024 年电商 / 金融赛道死亡率 17.5%，"
+          "是同年平均的 3.6 倍，全库唯一通过多重比较校正」作为核心结论发布。"
+          "该结论经复核后**不成立**，现已撤回，理由有二：")
+        A("")
+        A("1. **分类错误**：该赛道当时混入了非商业项目"
+          "（键盘快捷键菜单、桌面启动器、代码签出、比特币头像生成器等），"
+          "样本中有 11/40 归类错误。")
+        A("2. **暴露期混淆**：该赛道 7 个死亡项目全部被观察了 709 天以上，"
+          "而「被观察得越久，越容易暴露死亡」与赛道性质无关。"
+          "把观察时长对齐后效应消失。")
+        A("")
+        A("修正后的结果是：**在暴露期对齐、样本量达标的赛道里，"
+          "没有任何赛道通过多重比较校正**——"
+          "不只是这一条不显著，而是所有赛道都与同年平均不可区分。"
+          "任何「某赛道特别容易死」的说法，目前都没有证据支持。")
+        A("")
+    if unmatched_only:
+        A("**下面这组数字曾经被发布过，现予撤回**：")
+        A("")
+        A("| 年份 | 赛道 | 已死/已核验 | 该赛道 | 同年整体 | 倍数 | 校正后 p（未对齐暴露期） |")
+        A("|---|---|---|---|---|---|---|")
+        for sg in unmatched_only:
+            A(f"| {sg['year']} | {VERTICAL_CN.get(sg['category'], sg['category'])} | "
+              f"{sg['dead']}/{sg['verified']} | {sg['rate']*100:.1f}% | "
+              f"{sg['baseline']*100:.1f}% | {sg['ratio']:.1f}× | "
+              f"{sg.get('p_holm', 1.0):.5f} |")
+        A("")
+        A("这些数字在**没有对齐暴露期**时是「显著」的，"
+          "但对齐之后就不显著了。原因是该赛道的样本恰好包含更多"
+          "被观察了很久的项目——观察得越久，越容易暴露出死亡，"
+          "这跟赛道本身无关。把观察时长这个混淆变量去掉，效应就消失了。")
+        A("")
+        A("**教训**：任何跨批次比较，必须先对齐暴露期再检验；"
+          "效应在分层后消失，就说明它测的是观察者，不是被观察的对象。")
         A("")
 
     # --- evidence sample ---
@@ -610,6 +705,79 @@ def main():
 
     medium_verdicts = Counter(p["verdict"] for p in medium)
 
+    # --- death profile (P46) ---
+    # Descriptive facts about HOW products die and HOW LONG they last.
+    # No significance test, no baseline, no multiple-comparison
+    # correction: these are distributions, not hypotheses. Everything
+    # here is computed from the high-confidence tier only, and the
+    # denominator is stated on every table.
+    death_profile = None
+    if high:
+        VC_CN = {
+            "active": "活跃", "dormant": "停更", "slowing": "放缓",
+            "archived": "归档", "dead": "已死",
+            "unavailable": "无法判定", "repo_blocked": "仓库被封",
+        }
+        hvc = Counter(p["verdict"] for p in high)
+        tot_h = len(high)
+        vrows = [(VC_CN.get(k, k), v, fmt_pct1(v, tot_h))
+                 for k, v in hvc.most_common()]
+        dead_n = hvc.get("dead", 0)
+        notmaint_n = (dead_n + hvc.get("dormant", 0)
+                      + hvc.get("slowing", 0) + hvc.get("archived", 0))
+        # survival_days = verification date - launch day
+        surv = sorted(p["exposure_days"] for p in high
+                      if p.get("verdict") == "dead" and p.get("exposure_days"))
+        def _q(pct):
+            if not surv:
+                return 0
+            i = pct * (len(surv) - 1)
+            lo = int(i)
+            hi = min(lo + 1, len(surv) - 1)
+            return int(round(surv[lo] + (surv[hi] - surv[lo]) * (i - lo)))
+        qlab = [("P25", _q(.25)), ("中位数", _q(.50)),
+                ("P75", _q(.75)), ("P90", _q(.90))]
+        if surv:
+            edges = [("上线后 90 天内", 90), ("90–180 天", 180),
+                     ("180–365 天", 365), ("365–547 天", 547),
+                     ("547–730 天", 730), ("730 天以上", 10 ** 9)]
+            dbuckets = []
+            prev = 0
+            for lab, hi_v in edges:
+                cnt = sum(1 for d in surv if prev <= d < hi_v)
+                dbuckets.append((lab, cnt, fmt_pct1(cnt, len(surv))))
+                prev = hi_v
+        else:
+            dbuckets = []
+        within1 = sum(1 for d in surv if d < 365)
+        within2 = sum(1 for d in surv if d < 730)
+        # exposure buckets for the whole high-confidence tier
+        ebuckets = []
+        prev = 0
+        for lab, hi_v in [("180 天以内", 180), ("180–365 天", 365),
+                          ("365–547 天", 547), ("547–730 天", 730),
+                          ("730 天以上", 10 ** 9)]:
+            grp = [p for p in high
+                   if p.get("exposure_days") is not None
+                   and prev <= p["exposure_days"] < hi_v]
+            n_b = len(grp)
+            d_b = sum(1 for p in grp if p["verdict"] == "dead")
+            ebuckets.append((lab, n_b, d_b, fmt_pct1(d_b, n_b) if n_b else "-"))
+            prev = hi_v
+        plateau = ebuckets[2][3] if len(ebuckets) > 2 else "-"
+        death_profile = {
+            "verdicts": vrows,
+            "total": tot_h,
+            "dead_pct": fmt_pct1(dead_n, tot_h),
+            "notmaint_pct": fmt_pct1(notmaint_n, tot_h),
+            "quantiles": qlab,
+            "death_buckets": dbuckets,
+            "within_1y_pct": fmt_pct1(within1, len(surv)) if surv else "-",
+            "within_2y_pct": fmt_pct1(within2, len(surv)) if surv else "-",
+            "exposure_table": ebuckets,
+            "plateau_pct": plateau,
+        }
+
     verticals_high = vertical_table(products, tier="high")
     verticals_medium = vertical_table(products, tier="medium")
 
@@ -624,9 +792,21 @@ def main():
     # Which verticals are actually distinguishable from the baseline.
     # A rate that looks dramatic can be noise; only a significant
     # binomial tail earns a callout in the report.
+    #
+    # P44: the test is run on an EXPOSURE-MATCHED cohort (every project
+    # observed at least MIN_AGE_DAYS). Without this, the published
+    # "2024 commerce_fintech" headline was entirely an artifact of that
+    # vertical happening to contain more long-lived projects. The
+    # unmatched run is kept alongside it for transparency, and any
+    # vertical that is significant only in the unmatched run is reported
+    # as such and never as a finding.
     vertical_sig = {}
+    vertical_sig_unmatched = {}
     for y in sorted({p["launch_day"][:4] for p in high if p.get("launch_day")}):
-        vertical_sig[y] = vertical_significance(products, tier="high", year=y)
+        vertical_sig[y] = vertical_significance(products, tier="high", year=y,
+                                                min_age_days=MIN_AGE_DAYS)
+        vertical_sig_unmatched[y] = vertical_significance(products, tier="high",
+                                                          year=y)
 
     # Category-taxonomy quality: measured, not asserted. The numbers come
     # from audit_categories.py; if that file has not been run yet, report
@@ -692,6 +872,8 @@ def main():
         "verticals_medium": verticals_medium,
         "vertical_years": vertical_years,
         "vertical_sig": vertical_sig,
+        "death_profile": death_profile,
+        "vertical_sig_unmatched": vertical_sig_unmatched,
         "cat_n": cat_n,
         "gh_repos_total": gh_repos_total,
         "gh_repos_checked": gh_repos_checked,

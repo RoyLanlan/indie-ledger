@@ -796,3 +796,194 @@ outcome. HN `points` is a legitimate leading indicator (measured at launch);
 The test for this: *would I have been able to read this number on the day the
 project launched?* If not, it is not a predictor, no matter how large its
 apparent effect.
+
+### P44 — A vertical difference that disappears under a fixed exposure window is not a vertical effect (2026-11-12)
+
+The published headline was "2024 `commerce_fintech` died at 7/40 = 17.5%,
+3.6x the same-year baseline, the only vertical surviving Holm-Bonferroni
+correction". Re-checking it after the classifier fix (P45) exposed two
+independent problems, and the finding did not survive either.
+
+**Problem 1 — the vertical was misclassified.** 11 of the 40 posts were
+not commerce at all (see P45). With the classifier corrected the vertical
+holds `n = 29` verified rows, **below the `n >= 30` publishing floor**, so
+it is not publishable at all.
+
+**Problem 2 — the cohort was not exposure-matched.** All 7 dead repos in that
+vertical had been observed for 709-849 days; the median observation exposure
+of the surviving repos in the same vertical was 681 days. A vertical that
+happens to contain more long-lived projects "dies more" regardless of what
+the vertical is.
+
+With the exposure window fixed at `>= 365 days`, the 2024 high-confidence
+cohort is `193/4024 = 4.80%` and **no vertical survives Holm-Bonferroni
+correction** — every corrected p-value is 1.0000:
+
+| vertical | dead/verified | rate | raw p | Holm p |
+|---|---|---|---|---|
+| saas_productivity | 4/69 | 5.80% | 0.4234 | 1.0000 |
+| media_content | 7/127 | 5.51% | 0.4087 | 1.0000 |
+| productivity_generic | 6/111 | 5.41% | 0.4420 | 1.0000 |
+| ai_ml | 41/819 | 5.01% | 0.4118 | 1.0000 |
+| devtools | 44/1026 | 4.29% | 0.7961 | 1.0000 |
+| commerce_fintech | (n=29) | — | — | not publishable |
+
+The general rule: **a cohort comparison must be exposure-matched before it
+is tested. If the effect disappears when you stratify by how long you have
+watched, the effect was the observer, not the cohort.** P42 stated this for
+life-cycle statistics; it applies with equal force to every cross-sectional
+comparison, including per-vertical death rates.
+
+The implementation lives in `analyze.py`: `vertical_significance()` takes
+`min_age_days`, and `main()` prints both the unmatched and the
+exposure-matched run side by side so that a finding which only exists in
+the unmatched run is visible as such and never published.
+
+The exposure threshold is **365 days, pre-committed**. A threshold chosen
+by looking at where the deaths fall, and then used to test those same
+deaths, is the same mistake in a second round.
+
+### P45 — Ambiguous keywords need a context gate, and the taxonomy version must move (2026-11-12)
+
+Inspecting the 40 `commerce_fintech` posts of the 2024 cohort by hand found
+that 11 of them were not commerce at all:
+
+| title | why it was wrong |
+|---|---|
+| `Wk - which-key like popup menu` | `menu` = keyboard menu, not commerce |
+| `Rofi-desktop` | `menu` = desktop launcher menu |
+| `Chrome extension to mute tabs` | `menu` = tab menu |
+| `denys-olleik/accounting` | `crypto` + `checkout` in an accounting tool |
+| `Accounting System` | `checkout` = code checkout |
+| `food delivery` | `checkout` = ordering flow, different vertical |
+| `bitcoin avatar generator` | `crypto` = avatar, not fintech |
+
+The keyword lists contained `menu`, `checkout`, `trading`, `crypto`,
+`bitcoin`, `blockchain` as bare evidence. `trading` matches quantitative
+trading software; `crypto`/`bitcoin`/`blockchain` match libraries, games and
+avatar generators; `checkout` matches code checkout as often as payment
+checkout.
+
+Fix: **an ambiguous keyword only scores when a supporting context word from
+its own vertical also appears.** Implemented as `AMBIGUITY_GATES` in
+`categorize.py`. The gate was validated by hand on all 11 known misclassifications
+plus the 7 genuinely-correct commerce posts: **all 11 misclassifications left
+the vertical, and all 7 correct ones stayed** — the 7 dead repos were not
+disturbed by the fix.
+
+The audit band precision was unchanged (83.3%, n=120) and the death-audit
+regression suite stayed at 57/57.
+
+The general rule: **an ambiguous keyword is a hypothesis, not a match. Any
+keyword that a human can read as a non-vertical sense must require a context
+word before it counts.** And: **a change to the keyword tables, the gates or
+the scoring weights voids every published band number.** The taxonomy version
+in `categories.jsonl` is bumped (`v1` -> `v2`) and every downstream number is
+recomputed and re-published as a set.
+
+### P46 — Descriptive facts need no significance test; do not discard them looking for one (2026-11-12)
+
+After the vertical finding was retracted, the temptation was to conclude that
+the dataset had nothing publishable. That was wrong: the two findings that
+survived are descriptive, not inferential, and therefore need no p-value,
+no baseline and no multiple-comparison correction.
+
+**How dead products die** (high-confidence tier, n = 24929):
+
+| verdict | n | share |
+|---|---|---|
+| active | 13949 | 55.95% |
+| slowing | 4979 | 19.97% |
+| dormant | 4321 | 17.33% |
+| dead | 1152 | 4.62% |
+| archived | 517 | 2.07% |
+
+**How long they last** (the 1152 dead repos, `survival_days` known for all):
+
+| statistic | days |
+|---|---|
+| P25 | 248 |
+| median | 327 |
+| P75 | 558 |
+| P90 | 812 |
+
+| died within | n | share |
+|---|---|---|
+| 90 days | 67 | 5.82% |
+| 180 days | 107 | 9.29% |
+| 365 days | 636 | 55.21% |
+| 730 days | 986 | 85.59% |
+
+**The rule**: **a distribution is not a hypothesis. Do not run a significance
+test on a histogram, and do not throw away a fact just because it has no
+p-value.** The published headline should be the distribution of *how* things
+die and *when*, which is directly actionable, rather than a per-vertical
+ranking that needs a significance test to survive.
+
+### P47 — A marketing asset is not a scientific claim, and it inherits the strength of the weakest number it contains (2026-11-12)
+
+The retail product page and the private-traffic copy were written while the
+vertical finding was still believed. After P44 and P45 retracted it, both
+documents still quoted `17.5%`, `3.6x` and "the only vertical that survives
+correction". A retracting rule that does not reach the marketing layer leaves
+the false claim in the one place it converts into money.
+
+The general rule: **the retraction of a published number must sweep every
+artifact that carries it — report, README, product page, sales copy, and the
+PIS ledger entry that recorded it.** A copy file is not a neutral restatement
+of a report: it is where the number acquires a price, so it is the last place
+a stale number may survive, not the first.
+
+Concretely, for this project: the retail copy must be rebuilt on the
+P46 descriptive findings, and must not name any vertical or any ranking.
+
+### P48 — `age_days` is not the exposure window; read the field semantics before you stratify (2026-11-12)
+
+While implementing P44, the exposure-matched run came back with "no
+vertical clears n>=30" for every year — including `ai_ml` with 818 verified
+rows, which is obviously wrong. The cause was a field-semantics error, and
+it is the *second* time this exact pair of fields has been confused.
+
+| field | actual meaning | present on dead rows? |
+|---|---|---|
+| `survival_days` | verification date − `launch_day` = **how long we have watched the project** | yes (all 1152) |
+| `age_days` | verification date − `pushed_at` = **how long since the last commit** | **no** (absent on all 1153 dead + 101 archived rows) |
+
+`age_days` was used as the exposure window. Because `age_days` is *missing*
+on exactly the dead and archived rows, using it as the exposure filter
+silently removes every death from the long-exposure cohort — and then
+concludes that nothing dies after a year, which is the exact opposite of
+the truth.
+
+Verified on 5000 sampled rows: `age_days == (check − pushed_at)` in
+**100.0%** of cases; `age_days == (check − launch_day)` in 11.8%. And
+`survival_days == (check − launch_day)` in 23606 of 24919 rows.
+
+The general rule: **before using a field as a stratification axis, verify
+its definition against the data — never against its name.** A field that is
+absent precisely on the rows of the outcome you are studying is a
+selection filter, not a covariate. And: **if a stratified result is
+physically implausible (nobody dies after year one?), suspect the filter,
+not the population.**
+
+This is the same class of error as the earlier `survival_days` /
+`age_days` mix-up in the PIS round of 2026-11-12. It recurred because the
+rule was written into the ledger entry but not into code. The lesson for
+the process: **a rule that lives only in prose will be re-broken.** P44 and
+P48 are now enforced by `analyze.py` (`exposure_days` is set from
+`survival_days` at build time, and `main()` prints matched and unmatched
+runs side by side).
+
+With the correct field, the high-confidence death-rate curve by exposure is:
+
+| exposure | cohort n | dead | rate |
+|---|---|---|---|
+| 0-180d | 6950 | 174 | 2.50% |
+| 180-365d | 8527 | 462 | 5.42% |
+| 365-547d | 3487 | 213 | 6.11% |
+| 547-730d | 2536 | 137 | 5.40% |
+| 730d+ | 3419 | 166 | 4.86% |
+
+The rate plateaus around one year and then *falls slightly* — the long tail
+is a survivor pool, not a growing graveyard. That flatness is what makes a
+fixed 365-day window a reasonable choice rather than an arbitrary one.

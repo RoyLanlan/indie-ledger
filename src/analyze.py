@@ -19,6 +19,13 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 from paths import ROOT, DATA as _DATA_DIR, REPORTS as _REPORTS_DIR
 MIN_N = 30  # red line: never publish a cohort smaller than this
 
+# P44: the minimum observation age for a cross-sectional comparison.
+# 365 days (one full year) is used deliberately rather than a value
+# tuned to the data: a threshold picked by looking at where the deaths
+# fall, and then used to test those same deaths, is a second round of
+# the same mistake. One year is pre-committed and round.
+MIN_AGE_DAYS = 365
+
 
 def _binom_tail(n, k, p):
     """Exact one-sided binomial tail P(X >= k | n, p), without overflow.
@@ -100,6 +107,14 @@ def build(ledger, repo_status, domain_status):
             rec["archived"] = rv.get("archived")
             rec["last_push"] = rv.get("pushed_at")
             rec["stars"] = rv.get("stars")
+            # P42/P44: the observation exposure is `survival_days`
+            # (verification date - launch day). Note that `age_days` is a
+            # DIFFERENT field: it is the days since the last push, and it
+            # is absent on dead/archived rows. Using `age_days` as the
+            # exposure window is a field-semantics error that silently
+            # drops every dead repo from the long-exposure cohort -- see
+            # docs/RULES.md P48.
+            rec["exposure_days"] = rv.get("survival_days")
         elif rec["domain"] and rec["domain"] in dom_verdict:
             dv = dom_verdict[rec["domain"]]
             rec["verdict"] = dv.get("verdict")
@@ -279,7 +294,8 @@ def vertical_year_table(products, min_n=MIN_N, tier="high", year=None):
     return out
 
 
-def vertical_significance(products, tier="high", year=None, min_n=MIN_N):
+def vertical_significance(products, tier="high", year=None, min_n=MIN_N,
+                          min_age_days=None):
     """Is a vertical's death rate actually different from the baseline?
 
     A vertical with 3 dead out of 40 looks dramatic and may be noise.
@@ -295,12 +311,21 @@ def vertical_significance(products, tier="high", year=None, min_n=MIN_N):
     raw and the corrected p-value are reported. A vertical is called
     significant only if it survives the correction.
 
+    P44: a cohort comparison must be exposure-matched before it is
+    tested. `min_age_days` drops every row that has not been observed for
+    at least that many days, so that a vertical is not "worse" merely
+    because it happens to contain older projects. This is not optional:
+    without it the published 2024 commerce_fintech finding was entirely
+    an artifact of the exposure mix (see docs/RULES.md P44).
+
     Returns a list of dicts sorted by p-value.
     """
     rows = [p for p in products
             if (not tier or p.get("confidence") == tier)
             and p.get("category") and p.get("launch_day")
-            and (not year or p["launch_day"][:4] == year)]
+            and (not year or p["launch_day"][:4] == year)
+            and (min_age_days is None
+                 or (p.get("exposure_days") or 0) >= min_age_days)]
     if not rows:
         return []
 
@@ -447,17 +472,26 @@ def main():
             vrows_medium = vrows
 
     print("\n=== vertical significance vs cohort baseline (exact binomial) ===")
+    # P44: two runs are printed on purpose. `unmatched` is the old
+    # behaviour (year-stratified only) and `exposure-matched` additionally
+    # drops rows that have not been observed long enough. If a vertical is
+    # significant only in the unmatched run, the effect is the exposure
+    # mix and must not be published.
     for yr in sorted({p["launch_day"][:4] for p in products
                        if p.get("launch_day") and p.get("confidence") == "high"}):
-        sig = vertical_significance(products, tier="high", year=yr)
-        if not sig:
-            continue
-        print(f"\n  -- {yr} --")
-        for r in sig[:8]:
-            flag = "SIG" if r["significant"] else "   "
-            print(f"   {flag} {r['category']:24} {r['dead']:>4}/{r['verified']:<5} "
-                  f"rate={r['rate']*100:5.1f}%  baseline={r['baseline']*100:4.1f}%  "
-                  f"x{r['ratio']:4.1f}  p={r['p_value']:.5f}")
+        for label, min_age in (("unmatched (year only)", None),
+                               (f"exposure-matched (age>={MIN_AGE_DAYS}d)", MIN_AGE_DAYS)):
+            sig = vertical_significance(products, tier="high", year=yr,
+                                        min_age_days=min_age)
+            if not sig:
+                print(f"\n  -- {yr} / {label}: (no vertical clears n>={MIN_N}) --")
+                continue
+            print(f"\n  -- {yr} / {label} --")
+            for r in sig[:8]:
+                flag = "SIG" if r["significant"] else "   "
+                print(f"   {flag} {r['category']:24} {r['dead']:>4}/{r['verified']:<5} "
+                      f"rate={r['rate']*100:5.1f}%  baseline={r['baseline']*100:4.1f}%  "
+                      f"x{r['ratio']:4.1f}  p={r['p_value']:.5f}  holm={r['p_holm']:.5f}")
 
     json.dump({"products": products, "cohorts": rows,
                "verticals_high": vrows_high, "verticals_medium": vrows_medium},

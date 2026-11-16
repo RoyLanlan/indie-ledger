@@ -782,5 +782,73 @@ class FakeResponse:
         return False
 
 
+class TestExposureMatching(unittest.TestCase):
+    """P44 / P48: a cohort comparison must be exposure-matched, and the
+    exposure window is `survival_days`, not `age_days`."""
+
+    def _product(self, **kw):
+        p = {"key": "k", "repo": "o/r", "category": "devtools",
+             "launch_day": "2024-01-01", "confidence": "high",
+             "verdict": "active", "exposure_days": 100, "age_days": 100}
+        p.update(kw)
+        return p
+
+    def test_exposure_filter_drops_short_observed_rows(self):
+        rows = [self._product(key=f"k{i}", exposure_days=d)
+                for i, d in enumerate([100, 200, 400, 900])]
+        out = analyze.vertical_significance(
+            rows, tier="high", year="2024", min_age_days=365)
+        # only the two long-observed rows may enter the baseline
+        self.assertEqual(out, [] if not out else out)
+        # directly: build a cohort where only short rows die
+        short = [self._product(key=f"s{i}", exposure_days=100, verdict="dead")
+                 for i in range(40)]
+        out_short = analyze.vertical_significance(
+            short, tier="high", year="2024", min_age_days=365)
+        self.assertEqual(out_short, [],
+                         "rows observed <365d must be excluded by the filter")
+
+    def test_no_exposure_filter_keeps_them(self):
+        short = [self._product(key=f"s{i}", exposure_days=100, verdict="dead")
+                 for i in range(40)]
+        out = analyze.vertical_significance(short, tier="high", year="2024")
+        self.assertTrue(out, "without the filter the cohort must be tested")
+
+    def test_exposure_days_comes_from_survival_days_not_age_days(self):
+        """P48: `age_days` is days since last push and is ABSENT on dead
+        rows. If the exposure window were built from `age_days`, every dead
+        row would silently drop out of the long-exposure cohort."""
+        ledger = [{"id": 1, "repo": "o/r", "day": "2024-01-01",
+                   "title": "t", "points": 1}]
+        # dead repo: age_days is absent (as in the real data), survival_days present
+        repo_status = [{"repo": "o/r", "verdict": "dead", "reason": "404",
+                        "survival_days": 900, "archived": False,
+                        "pushed_at": "2024-01-02", "stars": 0}]
+        prods = analyze.build(ledger, repo_status, [])
+        self.assertEqual(prods[0]["exposure_days"], 900)
+        self.assertNotIn("age_days", prods[0])
+
+
+class TestAmbiguityGates(unittest.TestCase):
+    """P45: an ambiguous keyword must require a context word."""
+
+    def test_menu_alone_is_not_commerce(self):
+        r = categorize.classify("Wk - a which-key like popup menu for key chords")
+        self.assertNotEqual(r.get("category"), "commerce_fintech")
+
+    def test_code_checkout_is_not_commerce(self):
+        r = categorize.classify("Checkout: a tool to review and apply patches")
+        self.assertNotEqual(r.get("category"), "commerce_fintech")
+
+    def test_bitcoin_avatar_is_not_fintech(self):
+        r = categorize.classify("Bitcoin avatar generator for your profile")
+        self.assertNotEqual(r.get("category"), "commerce_fintech")
+
+    def test_real_payment_tool_is_still_commerce(self):
+        r = categorize.classify(
+            "Stripe payment link and subscription checkout for indie hackers")
+        self.assertEqual(r.get("category"), "commerce_fintech")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -1,0 +1,476 @@
+{
+ "generated": "2026-11-12",
+ "min_age_days": 365,
+ "posts": 89350,
+ "products": 62073,
+ "repos_total": 24929,
+ "repos_checked": 24929,
+ "domains_total": 38828,
+ "domains_checked": 38828,
+ "high_n": 24929,
+ "med_n": 37080,
+ "high_verdicts": {
+  "active": 13949,
+  "dormant": 4321,
+  "slowing": 4979,
+  "archived": 517,
+  "dead": 1152,
+  "unavailable": 7,
+  "repo_blocked": 4
+ },
+ "med_verdicts": {
+  "blocked": 1029,
+  "alive": 28820,
+  "dead": 4866,
+  "degraded": 2365
+ },
+ "cohorts_high": [
+  {
+   "year": "2024",
+   "n": 4027,
+   "dead": 193,
+   "dormant": 2078,
+   "slowing": 373,
+   "archived": 168,
+   "active": 1211,
+   "dead_pct": 4,
+   "not_maintained_pct": 69,
+   "publishable": true
+  },
+  {
+   "year": "2025",
+   "n": 6955,
+   "dead": 406,
+   "dormant": 2229,
+   "slowing": 1564,
+   "archived": 197,
+   "active": 2555,
+   "dead_pct": 5,
+   "not_maintained_pct": 63,
+   "publishable": true
+  },
+  {
+   "year": "2026",
+   "n": 13947,
+   "dead": 553,
+   "dormant": 14,
+   "slowing": 3042,
+   "archived": 152,
+   "active": 10183,
+   "dead_pct": 3,
+   "not_maintained_pct": 26,
+   "publishable": true
+  }
+ ],
+ "death_n": 1152,
+ "death_q": {
+  "P25": 248,
+  "P50": 327,
+  "P75": 558,
+  "P90": 812
+ },
+ "death_buckets": [
+  {
+   "label": "90 天内",
+   "n": 67,
+   "pct": 5.8
+  },
+  {
+   "label": "90–180 天",
+   "n": 107,
+   "pct": 9.3
+  },
+  {
+   "label": "180–365 天",
+   "n": 462,
+   "pct": 40.1
+  },
+  {
+   "label": "365–547 天",
+   "n": 213,
+   "pct": 18.5
+  },
+  {
+   "label": "547–730 天",
+   "n": 137,
+   "pct": 11.9
+  },
+  {
+   "label": "730 天以上",
+   "n": 166,
+   "pct": 14.4
+  }
+ ],
+ "within_1y": 55.2,
+ "within_2y": 85.6,
+ "exposure": [
+  {
+   "label": "180 天以内",
+   "n": 6950,
+   "dead": 174,
+   "pct": 2.5
+  },
+  {
+   "label": "180–365 天",
+   "n": 8527,
+   "dead": 462,
+   "pct": 5.4
+  },
+  {
+   "label": "365–547 天",
+   "n": 3487,
+   "dead": 213,
+   "pct": 6.1
+  },
+  {
+   "label": "547–730 天",
+   "n": 2536,
+   "dead": 137,
+   "pct": 5.4
+  },
+  {
+   "label": "730 天以上",
+   "n": 3419,
+   "dead": 166,
+   "pct": 4.9
+  }
+ ],
+ "verticals_2024": [
+  {
+   "category": "commerce_fintech",
+   "verified": 29,
+   "dead": 7,
+   "dead_pct_verified": 24.137931034482758,
+   "not_maintained_pct_verified": 79.3103448275862,
+   "publishable": false
+  },
+  {
+   "category": "education_learning",
+   "verified": 28,
+   "dead": 3,
+   "dead_pct_verified": 10.714285714285714,
+   "not_maintained_pct_verified": 78.57142857142857,
+   "publishable": false
+  },
+  {
+   "category": "health_wellness",
+   "verified": 24,
+   "dead": 2,
+   "dead_pct_verified": 8.333333333333334,
+   "not_maintained_pct_verified": 75.0,
+   "publishable": false
+  },
+  {
+   "category": "saas_productivity",
+   "verified": 69,
+   "dead": 4,
+   "dead_pct_verified": 5.797101449275362,
+   "not_maintained_pct_verified": 66.66666666666667,
+   "publishable": true
+  },
+  {
+   "category": "media_content",
+   "verified": 127,
+   "dead": 7,
+   "dead_pct_verified": 5.511811023622047,
+   "not_maintained_pct_verified": 66.92913385826772,
+   "publishable": true
+  },
+  {
+   "category": "productivity_generic",
+   "verified": 111,
+   "dead": 6,
+   "dead_pct_verified": 5.405405405405405,
+   "not_maintained_pct_verified": 68.46846846846847,
+   "publishable": true
+  },
+  {
+   "category": "ai_ml",
+   "verified": 818,
+   "dead": 41,
+   "dead_pct_verified": 5.012224938875305,
+   "not_maintained_pct_verified": 75.91687041564792,
+   "publishable": true
+  },
+  {
+   "category": "design_creative",
+   "verified": 102,
+   "dead": 5,
+   "dead_pct_verified": 4.901960784313726,
+   "not_maintained_pct_verified": 84.31372549019608,
+   "publishable": true
+  },
+  {
+   "category": "other",
+   "verified": 1009,
+   "dead": 49,
+   "dead_pct_verified": 4.856293359762141,
+   "not_maintained_pct_verified": 68.8800792864222,
+   "publishable": true
+  },
+  {
+   "category": "social_community",
+   "verified": 66,
+   "dead": 3,
+   "dead_pct_verified": 4.545454545454546,
+   "not_maintained_pct_verified": 75.75757575757575,
+   "publishable": true
+  },
+  {
+   "category": "data_analytics",
+   "verified": 113,
+   "dead": 5,
+   "dead_pct_verified": 4.424778761061947,
+   "not_maintained_pct_verified": 69.91150442477876,
+   "publishable": true
+  },
+  {
+   "category": "devtools",
+   "verified": 1026,
+   "dead": 44,
+   "dead_pct_verified": 4.288499025341131,
+   "not_maintained_pct_verified": 68.12865497076024,
+   "publishable": true
+  },
+  {
+   "category": "games_entertainment",
+   "verified": 71,
+   "dead": 3,
+   "dead_pct_verified": 4.225352112676056,
+   "not_maintained_pct_verified": 74.64788732394366,
+   "publishable": true
+  },
+  {
+   "category": "science_hardware",
+   "verified": 49,
+   "dead": 2,
+   "dead_pct_verified": 4.081632653061225,
+   "not_maintained_pct_verified": 61.224489795918366,
+   "publishable": true
+  },
+  {
+   "category": "infra_devops",
+   "verified": 315,
+   "dead": 10,
+   "dead_pct_verified": 3.1746031746031744,
+   "not_maintained_pct_verified": 60.95238095238095,
+   "publishable": true
+  },
+  {
+   "category": "security_privacy",
+   "verified": 66,
+   "dead": 2,
+   "dead_pct_verified": 3.0303030303030303,
+   "not_maintained_pct_verified": 56.06060606060606,
+   "publishable": true
+  }
+ ],
+ "sig_2024": [
+  {
+   "category": "media_content",
+   "verified": 127,
+   "dead": 7,
+   "rate": 0.05511811023622047,
+   "baseline": 0.04797414864528959,
+   "ratio": 1.1489127330586266,
+   "p_value": 0.4089246633053508,
+   "significant": false,
+   "p_holm": 1.0,
+   "significant_uncorrected": false,
+   "holm_threshold": 0.0038461538461538464
+  },
+  {
+   "category": "ai_ml",
+   "verified": 818,
+   "dead": 41,
+   "rate": 0.05012224938875306,
+   "baseline": 0.04797414864528959,
+   "ratio": 1.0447762139427645,
+   "p_value": 0.4093461660819811,
+   "significant": false,
+   "p_holm": 1.0,
+   "significant_uncorrected": false,
+   "holm_threshold": 0.004166666666666667
+  },
+  {
+   "category": "saas_productivity",
+   "verified": 69,
+   "dead": 4,
+   "rate": 0.057971014492753624,
+   "baseline": 0.04797414864528959,
+   "ratio": 1.2083802658256364,
+   "p_value": 0.4235800234933651,
+   "significant": false,
+   "p_holm": 1.0,
+   "significant_uncorrected": false,
+   "holm_threshold": 0.004545454545454546
+  },
+  {
+   "category": "productivity_generic",
+   "verified": 111,
+   "dead": 6,
+   "rate": 0.05405405405405406,
+   "baseline": 0.04797414864528959,
+   "ratio": 1.1267329505671475,
+   "p_value": 0.4422669355639735,
+   "significant": false,
+   "p_holm": 1.0,
+   "significant_uncorrected": false,
+   "holm_threshold": 0.005
+  },
+  {
+   "category": "other",
+   "verified": 1009,
+   "dead": 49,
+   "rate": 0.048562933597621406,
+   "baseline": 0.04797414864528959,
+   "ratio": 1.0122729630219218,
+   "p_value": 0.48560170644814715,
+   "significant": false,
+   "p_holm": 1.0,
+   "significant_uncorrected": false,
+   "holm_threshold": 0.005555555555555556
+  },
+  {
+   "category": "design_creative",
+   "verified": 102,
+   "dead": 5,
+   "rate": 0.049019607843137254,
+   "baseline": 0.04797414864528959,
+   "ratio": 1.0217921365437366,
+   "p_value": 0.5445413528968756,
+   "significant": false,
+   "p_holm": 1.0,
+   "significant_uncorrected": false,
+   "holm_threshold": 0.00625
+  },
+  {
+   "category": "social_community",
+   "verified": 66,
+   "dead": 3,
+   "rate": 0.045454545454545456,
+   "baseline": 0.04797414864528959,
+   "ratio": 0.9474799811587377,
+   "p_value": 0.6190825652753198,
+   "significant": false,
+   "p_holm": 1.0,
+   "significant_uncorrected": false,
+   "holm_threshold": 0.0071428571428571435
+  },
+  {
+   "category": "data_analytics",
+   "verified": 113,
+   "dead": 5,
+   "rate": 0.04424778761061947,
+   "baseline": 0.04797414864528959,
+   "ratio": 0.9223256453757622,
+   "p_value": 0.635625517533456,
+   "significant": false,
+   "p_holm": 1.0,
+   "significant_uncorrected": false,
+   "holm_threshold": 0.008333333333333333
+  },
+  {
+   "category": "games_entertainment",
+   "verified": 71,
+   "dead": 3,
+   "rate": 0.04225352112676056,
+   "baseline": 0.04797414864528959,
+   "ratio": 0.8807560388236152,
+   "p_value": 0.6680984974059432,
+   "significant": false,
+   "p_holm": 1.0,
+   "significant_uncorrected": false,
+   "holm_threshold": 0.01
+  },
+  {
+   "category": "science_hardware",
+   "verified": 49,
+   "dead": 2,
+   "rate": 0.04081632653061224,
+   "baseline": 0.04797414864528959,
+   "ratio": 0.8507983504282541,
+   "p_value": 0.6880991994124177,
+   "significant": false,
+   "p_holm": 1.0,
+   "significant_uncorrected": false,
+   "holm_threshold": 0.0125
+  },
+  {
+   "category": "devtools",
+   "verified": 1026,
+   "dead": 44,
+   "rate": 0.042884990253411304,
+   "baseline": 0.04797414864528959,
+   "ratio": 0.8939187346604853,
+   "p_value": 0.79656597807024,
+   "significant": false,
+   "p_holm": 1.0,
+   "significant_uncorrected": false,
+   "holm_threshold": 0.016666666666666666
+  },
+  {
+   "category": "security_privacy",
+   "verified": 66,
+   "dead": 2,
+   "rate": 0.030303030303030304,
+   "baseline": 0.04797414864528959,
+   "ratio": 0.6316533207724917,
+   "p_value": 0.8313880915032998,
+   "significant": false,
+   "p_holm": 1.0,
+   "significant_uncorrected": false,
+   "holm_threshold": 0.025
+  },
+  {
+   "category": "infra_devops",
+   "verified": 315,
+   "dead": 10,
+   "rate": 0.031746031746031744,
+   "baseline": 0.04797414864528959,
+   "ratio": 0.6617320503330866,
+   "p_value": 0.9382497157932694,
+   "significant": false,
+   "p_holm": 0.9382497157932694,
+   "significant_uncorrected": false,
+   "holm_threshold": 0.05
+  }
+ ],
+ "points_strata": [
+  {
+   "year": "2024",
+   "n": 4024,
+   "base_dead": 193,
+   "base_pct": 4.8,
+   "lo_n": 3323,
+   "lo_dead": 181,
+   "lo_pct": 5.45,
+   "hi_n": 701,
+   "hi_dead": 12,
+   "hi_pct": 1.71,
+   "p_hi_lower": 4.4819209122524936e-07,
+   "p_lo_higher": 3.29764413304154e-40,
+   "p_hi_lower_adj": 8.963841824504987e-07,
+   "p_lo_higher_adj": 1.319057653216616e-39,
+   "significant": true
+  },
+  {
+   "year": "2025",
+   "n": 5418,
+   "base_dead": 323,
+   "base_pct": 5.96,
+   "lo_n": 4809,
+   "lo_dead": 305,
+   "lo_pct": 6.34,
+   "hi_n": 609,
+   "hi_dead": 18,
+   "hi_pct": 2.96,
+   "p_hi_lower": 0.00011859236856297481,
+   "p_lo_higher": 9.47560936400652e-34,
+   "p_hi_lower_adj": 0.00011859236856297481,
+   "p_lo_higher_adj": 2.842682809201956e-33,
+   "significant": true
+  }
+ ],
+ "points_threshold": 20
+}

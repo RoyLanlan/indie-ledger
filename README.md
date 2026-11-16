@@ -68,10 +68,13 @@
 | 信号 | 判定 |
 |---|---|
 | 仓库 404 / 删除 | `dead` |
-| `archived = true` | `dead` |
+| `archived = true` | `archived`（**独立判定**，计入「不再维护」，不计入「已死」） |
 | `pushed_at` 超过 365 天 | `dormant` |
 | `pushed_at` 180–365 天 | `slowing` |
 | `pushed_at` 180 天内 | `active` |
+
+> 限流、网络失败、403 次级限流、451 法律下架、仓库封禁**都不写判定**，
+> 分别记为 `unavailable` / `repo_blocked`，绝不写成 `dead`。
 
 ### 域名侧（中置信）
 
@@ -97,8 +100,19 @@
 7. 条目被移除 ≠ 产品死亡
 8. 同数据同输出；报告正文不写时间戳
 9. 不宣称任何比率代表整个行业
+10. 跨批次比较必须先对齐暴露期（被观察时长），再谈显著性
+11. 描述性事实不需要 p 值，但也不允许因为没有 p 值就被丢掉
 
-完整版见 [`docs/RULES.md`](docs/RULES.md)，含 **P1–P12 判例库** —— 每一条都对应一次真实事故，带量级。
+完整版见 [`docs/RULES.md`](docs/RULES.md)，含 **P1–P48 判例库** —— 每一条都对应一次真实事故，带量级。
+
+其中三条直接约束「哪些数字可以对外说」：
+
+- **P32**：一年检验十几个赛道时必须做 Holm–Bonferroni 校正，裸 `p<0.05` 不构成结论
+- **P44**：跨批次比较必须**先对齐暴露期**再检验；分层后效应消失，说明测的是观察者
+- **P46**：描述性分布不需要显著性检验，但也不能因为没有 p 值就丢掉
+
+> 早期版本曾发布「2024 年电商/金融赛道死亡率 17.5%、全库唯一显著」，
+> 经复核后该结论**不成立**（分类错误 + 暴露期混淆），已在报告中明确撤回。
 
 ---
 
@@ -119,6 +133,8 @@ data/
   repo_status.jsonl   # GitHub 核验结果
   liveness.jsonl      # 域名核验结果
   products.json       # 关联后的产品级视图
+  categories.jsonl    # 行业标签（taxonomy v2）
+  category_audit.json # 分类精度审计结果
   days/               # 逐日原始采集
 docs/
   RULES.md            # 完整判定规则 + 判例库
@@ -144,7 +160,10 @@ python3 src/render_report.py
 
 ## 状态口径
 
-`active` · `slowing` · `dormant` · `dead` · `unverified`
+`active` · `slowing` · `dormant` · `archived` · `dead` · `unavailable` · `repo_blocked` · `unverified`
+
+GitHub 层与域名层的判定名不同域（域名层是 `alive` / `dead` / `degraded` / `blocked`），
+两层分母永远不合并。
 
 ---
 
