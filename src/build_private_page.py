@@ -33,7 +33,11 @@ sys.path.insert(0, HERE)
 
 PBKDF2_ROUNDS = 600_000
 SALT_BYTES = 16
-NONCE_BYTES = 12
+# AES-CTR needs a FULL 16-byte counter block.  A 12-byte nonce works
+# with `openssl enc` only because openssl silently zero-pads it -- but
+# WebCrypto's AES-CTR rejects a counter that is not exactly 16 bytes, so
+# the browser could never open the page.  16 bytes everywhere.
+NONCE_BYTES = 16
 
 
 # --------------------------------------------------------------------------
@@ -277,11 +281,11 @@ JS = """
     const key = await crypto.subtle.importKey('raw', all.slice(0,32),
       {name:'AES-CTR'}, false, ['decrypt']);
     const ct = b64d(CT);
-    const plain = await crypto.subtle.decrypt(
-      {name:'AES-CTR', counter:new Uint8Array(b64d(NONCE)), length:64},
-      key, ct);
 
-    // verify HMAC over nonce+salt+ciphertext
+    // Encrypt-then-MAC: verify the tag BEFORE producing any plaintext.
+    // Decrypting first and checking afterwards would still discard a
+    // bad plaintext, but it also means a wrong password runs the whole
+    // AES path -- slower, and it leaks how far the attacker got.
     const hk = await crypto.subtle.importKey('raw', macKey,
       {name:'HMAC', hash:'SHA-256'}, false, ['sign']);
     const data = new Uint8Array(b64d(NONCE).length + b64d(SALT).length + ct.length);
@@ -294,6 +298,12 @@ JS = """
     let diff = 0;
     for (let i=0;i<sig.length;i++) diff |= sig[i] ^ want[i];
     if (diff !== 0) return null;
+
+    // counter must be exactly 16 bytes; length 128 matches openssl's
+    // full-counter increment so both sides produce identical keystream
+    const plain = await crypto.subtle.decrypt(
+      {name:'AES-CTR', counter:new Uint8Array(b64d(NONCE)), length:128},
+      key, ct);
     return new TextDecoder().decode(plain);
   }
 
@@ -388,9 +398,15 @@ def main():
     print(f"wrote {args.out} ({len(html.encode('utf-8'))} bytes)")
     print("password embedded in file:",
           "YES-BAD" if args.password in html else "no")
-    print("plaintext leaked:",
-          "YES-BAD" if any(w in html for w in ["定价", "元/次", "私域"])
-          else "no")
+    # Probe for ACTUAL source content, not the words themselves: the
+    # gate label legitimately says "定价、获客文案与销售话术".  Checking
+    # for those words reported a leak that did not exist.
+    import re as _re
+    probes = ["不再维护合计", "死亡时间中位数", "死法结构",
+              "上线后 30 天内就停更", "私有链接发货", "跟进的三个时机"]
+    found = [p for p in probes if p in html]
+    print("source plaintext leaked:", "YES-BAD:" + ",".join(found)
+          if found else "no")
 
 
 if __name__ == "__main__":

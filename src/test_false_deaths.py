@@ -25,6 +25,13 @@ import github_enrich
 from github_enrich import (api, classify_repo, RateLimitError,
                            UnavailableError)
 
+# Modules under test for the newer regression suites:
+#   analyze   -- exposure-matched vertical significance (P42/P44/P48)
+#   categorize-- ambiguity gates on ambiguous keywords (P45/P46)
+# Both live next to this file, so HERE is already on sys.path.
+import analyze
+import categorize
+
 
 def fake_urlopen(code, attempts_seen, body=""):
     """Raise a real urllib HTTPError so api()'s except clauses apply."""
@@ -793,26 +800,40 @@ class TestExposureMatching(unittest.TestCase):
         p.update(kw)
         return p
 
+    def _cohort(self, dead_cat="devtools", n_dead=40, exposure=100,
+                alive_cat="other", n_alive=60):
+        """A cohort with two verticals: one dies, the other survives.
+        Two verticals are required -- the baseline is computed from the
+        verticals other than the one under test, so a single-vertical
+        cohort has no baseline and cannot be tested at all.
+        """
+        rows = [self._product(key=f"d{i}", category=dead_cat,
+                              exposure_days=exposure, verdict="dead")
+                for i in range(n_dead)]
+        rows += [self._product(key=f"a{i}", category=alive_cat,
+                               exposure_days=exposure, verdict="active")
+                 for i in range(n_alive)]
+        return rows
+
     def test_exposure_filter_drops_short_observed_rows(self):
-        rows = [self._product(key=f"k{i}", exposure_days=d)
-                for i, d in enumerate([100, 200, 400, 900])]
+        rows = self._cohort(exposure=100)
         out = analyze.vertical_significance(
             rows, tier="high", year="2024", min_age_days=365)
-        # only the two long-observed rows may enter the baseline
-        self.assertEqual(out, [] if not out else out)
-        # directly: build a cohort where only short rows die
-        short = [self._product(key=f"s{i}", exposure_days=100, verdict="dead")
-                 for i in range(40)]
-        out_short = analyze.vertical_significance(
-            short, tier="high", year="2024", min_age_days=365)
-        self.assertEqual(out_short, [],
+        self.assertEqual(out, [],
                          "rows observed <365d must be excluded by the filter")
 
     def test_no_exposure_filter_keeps_them(self):
-        short = [self._product(key=f"s{i}", exposure_days=100, verdict="dead")
-                 for i in range(40)]
-        out = analyze.vertical_significance(short, tier="high", year="2024")
+        rows = self._cohort(exposure=100)
+        out = analyze.vertical_significance(rows, tier="high", year="2024")
         self.assertTrue(out, "without the filter the cohort must be tested")
+
+    def test_long_exposure_survives_the_filter(self):
+        """The filter must drop short rows, not everything: a cohort
+        observed for >=365d is still testable."""
+        rows = self._cohort(exposure=900)
+        out = analyze.vertical_significance(
+            rows, tier="high", year="2024", min_age_days=365)
+        self.assertTrue(out, "rows observed >=365d must survive the filter")
 
     def test_exposure_days_comes_from_survival_days_not_age_days(self):
         """P48: `age_days` is days since last push and is ABSENT on dead
@@ -833,21 +854,25 @@ class TestAmbiguityGates(unittest.TestCase):
     """P45: an ambiguous keyword must require a context word."""
 
     def test_menu_alone_is_not_commerce(self):
-        r = categorize.classify("Wk - a which-key like popup menu for key chords")
-        self.assertNotEqual(r.get("category"), "commerce_fintech")
+        # categorize() returns (category, score, keywords)
+        cat, _, _ = categorize.categorize(
+            "Wk - a which-key like popup menu for key chords")
+        self.assertNotEqual(cat, "commerce_fintech")
 
     def test_code_checkout_is_not_commerce(self):
-        r = categorize.classify("Checkout: a tool to review and apply patches")
-        self.assertNotEqual(r.get("category"), "commerce_fintech")
+        cat, _, _ = categorize.categorize(
+            "Checkout: a tool to review and apply patches")
+        self.assertNotEqual(cat, "commerce_fintech")
 
     def test_bitcoin_avatar_is_not_fintech(self):
-        r = categorize.classify("Bitcoin avatar generator for your profile")
-        self.assertNotEqual(r.get("category"), "commerce_fintech")
+        cat, _, _ = categorize.categorize(
+            "Bitcoin avatar generator for your profile")
+        self.assertNotEqual(cat, "commerce_fintech")
 
     def test_real_payment_tool_is_still_commerce(self):
-        r = categorize.classify(
+        cat, _, _ = categorize.categorize(
             "Stripe payment link and subscription checkout for indie hackers")
-        self.assertEqual(r.get("category"), "commerce_fintech")
+        self.assertEqual(cat, "commerce_fintech")
 
 
 if __name__ == "__main__":

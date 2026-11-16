@@ -576,11 +576,35 @@ def main():
         _DATA = os.path.join(here, "data")
     ledger = os.path.join(_DATA, "ledger.jsonl")
     out_path = os.path.join(_DATA, "categories.jsonl")
+
+    # Single-writer lock (P50).  Two concurrent runs against the same
+    # output path used to be possible: one background, one foreground.
+    # Both wrote the file, and whichever finished last decided the
+    # `taxonomy_version` stamp on disk -- which silently mismatched the
+    # code's TAXONOMY_VERSION while every row count and distribution
+    # still looked correct.  The lock is ON by default here (unlike the
+    # samplers, which take --lock) because this script is the one people
+    # run by hand.
+    import fcntl
+    lock_dir = os.path.join(_DATA, ".locks")
+    os.makedirs(lock_dir, exist_ok=True)
+    lock_path = os.path.join(lock_dir, "categorize.lock")
+    lock_fh = open(lock_path, "a+")
+    try:
+        fcntl.flock(lock_fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        sys.stderr.write(
+            "another categorize run holds %s; exiting without writing.\n"
+            % lock_path)
+        lock_fh.close()
+        return 3
+
     if not os.path.exists(ledger):
         sys.stderr.write(
             "FATAL: ledger not found at %s\n"
             "The data directory must contain ledger.jsonl. Refusing to "
             "write an empty categories file.\n" % ledger)
+        lock_fh.close()
         return 2
 
     rows = []

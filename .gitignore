@@ -24,3 +24,10 @@ backfill_checkpoint.json
 
 # large derived artifacts (regenerate with analyze.py)
 data/products.json
+
+# single-writer lock files (P50) -- runtime state, never data
+data/.locks/
+*.lock
+
+# scratch recomputation outputs
+data/_*.json
