@@ -987,3 +987,59 @@ With the correct field, the high-confidence death-rate curve by exposure is:
 The rate plateaus around one year and then *falls slightly* — the long tail
 is a survivor pool, not a growing graveyard. That flatness is what makes a
 fixed 365-day window a reasonable choice rather than an arbitrary one.
+---
+
+### P49 — a published number that cannot be recomputed is wrong (2026-11-16)
+
+The product page carried a "stopped updating within 30 days of launch"
+table: `2024: 1,161 / 3,831 = 30.31%`, `2025: 35.32%`, `2026: 47.84%`.
+
+Recomputing from `data/repo_status.jsonl` over every candidate
+threshold and denominator produces **no** combination that yields those
+three numbers. The denominator was right (3,831 = 2024 rows with a
+`pushed_at`); the numerator was not reproducible at any threshold
+(`age_days<=30` → 658, `<=180` → 1,137, neither is 1,161).
+
+The rule: **every published figure must be reproducible from the
+committed data by a reader who has only the repository.** A number that
+cannot be recomputed is not "probably close" — it is unverifiable, and an
+unverifiable number in a sales document is worse than no number, because
+the buyer cannot tell it apart from the verified ones.
+
+Concretely: before publishing, recompute each figure from the raw data
+files and diff against the document. 8/8 percentage claims in the
+product page and copy pack passed this check; the stop-up table failed
+it and was replaced with `658 / 3,831 = 17.18%`, `1,288 / 6,548 =
+19.67%`, `5,138 / 13,570 = 37.86%`.
+
+A stale figure that was *checked by eye* against a previous version of
+the data is the usual source. The check must be against the data, not
+against the previous document.
+
+### P50 — two writers on one append-only file corrupt it silently (2026-11-16)
+
+`categorize.py` was launched twice against the same output path — once
+as a background task and once in the foreground. Both wrote
+`data/categories.jsonl`.
+
+Nothing crashed. The file parsed cleanly, had the right row count
+(89,350), and the right distribution. But the two runs had different
+`TAXONOMY_VERSION` values, so which stamp ended up on disk depended on
+which process finished last. The file ended up stamped `v1` while the
+code said `v2` — a silent version mismatch that would have made every
+downstream join report "reproducible" against the wrong taxonomy.
+
+The rule: **an append-only output needs a single-writer lock, and the
+lock must cover the whole run, not just the append.** This is the same
+requirement already applied to `github_sampler.py` and
+`domain_scan.py` (they take `.locks/*.lock` and `flock`). Every writer
+of a shared data file needs the same guard — including scripts that are
+normally run by hand.
+
+Detection after the fact, which is what made this recoverable: parse
+every line, check for duplicate ids, check the row count against the
+source, and check the version stamp against the code constant. All four
+are cheap. Verify them whenever a file was written by more than one
+process, or when a downstream file's numbers disagree with an
+independent recomputation.
+
